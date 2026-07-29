@@ -17,7 +17,59 @@ ve yönetim paneli bu paketi tüketir.
 
 Şartname üçünde de geçerlidir: [`docs/SPEC.md`](./docs/SPEC.md).
 
-## Hızlı başlangıç
+## ÜÇ UYGULAMAYI BİRLİKTE ÇALIŞTIRMA
+
+Üç depoyu **yan yana** klonlayın:
+
+```bash
+mkdir -p ~/zirve-tarim && cd ~/zirve-tarim
+git clone https://github.com/EmreKaya2000/zirve-tarim-api.git
+git clone https://github.com/EmreKaya2000/zirve-tarim-front.git
+git clone https://github.com/EmreKaya2000/zirve-tarim-admin.git
+```
+
+Sonra bu depodan tek komut:
+
+```bash
+cd zirve-tarim-api
+cp .env.example .env
+pnpm stack:up          # postgres + mailpit + api + front + admin
+docker compose exec api node prisma/seed.js
+```
+
+| Servis     | Adres                        |
+| ---------- | ---------------------------- |
+| Vitrin     | http://localhost:3000        |
+| Panel      | http://localhost:3001        |
+| API        | http://localhost:4000/api/v1 |
+| Swagger    | http://localhost:4000/docs   |
+| Mailpit    | http://localhost:8025        |
+| PostgreSQL | localhost:5432               |
+
+Durdurmak: `pnpm stack:down` · Loglar: `pnpm stack:logs`
+
+`docker-compose.stack.yml` kardeş depoların kaynaklarından imaj derler; yerel
+bir değişikliği görmek için yayınlamaya gerek yoktur.
+
+### Geliştirme modu (kod değişikliği anında yansır)
+
+Yığındaki imajlar üretim derlemesidir, kaynak bağlamaz. Arayüzde çalışırken:
+
+```bash
+# bu depoda: yalnız altyapı
+docker compose up -d            # postgres + api + mailpit
+
+# vitrin deposunda
+pnpm dev                        # :3000
+
+# panel deposunda
+pnpm dev                        # :3001
+```
+
+`CORS_ORIGINS` **iki kökeni de** içermelidir (`.env.example` içerir); yoksa
+arayüzler "Sunucuya ulaşılamadı" der.
+
+## Hızlı başlangıç — yalnız API
 
 ### Docker ile (önerilen)
 

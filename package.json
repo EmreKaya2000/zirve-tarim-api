@@ -27,7 +27,10 @@
     "types:build": "pnpm --filter @zirve/types build",
     "docker:up": "docker compose up -d --build",
     "docker:down": "docker compose down",
-    "docker:logs": "docker compose logs -f"
+    "docker:logs": "docker compose logs -f",
+    "stack:up": "docker compose -f docker-compose.yml -f docker-compose.stack.yml up -d --build",
+    "stack:down": "docker compose -f docker-compose.yml -f docker-compose.stack.yml down",
+    "stack:logs": "docker compose -f docker-compose.yml -f docker-compose.stack.yml logs -f"
   },
   "devDependencies": {
     "@zirve/typescript-config": "workspace:*",

@@ -1,0 +1,106 @@
+# =============================================================================
+# TAM YIĞIN — üç uygulamayı birlikte kaldırır
+#
+# `docker-compose.yml` yalnız API'yi ve altyapısını kaldırır; bu dosya ona
+# vitrin ve paneli EKLER.
+#
+# ÖN KOŞUL: üç depo YAN YANA klonlanmış olmalı.
+#
+#   ~/zirve-tarim/
+#     ├── zirve-tarim-api      <- bu depo, komut buradan çalışır
+#     ├── zirve-tarim-front
+#     └── zirve-tarim-admin
+#
+# KULLANIM:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.stack.yml up -d --build
+#
+# Kısayol:  pnpm stack:up
+#
+# NEDEN AYRI DOSYA: API deposu tek başına da çalışabilmelidir. Vitrin ve panel
+# tanımları asıl compose dosyasına konsaydı, yalnız API üzerinde çalışan biri
+# de kardeş depoları klonlamaya zorlanırdı ve `docker compose up` kırılırdı.
+#
+# NEDEN GÖRECELİ BUILD BAĞLAMI: imajlar kardeş depoların kaynaklarından
+# derlenir. Kayıt defterinden çekilen imajlar kullanılsaydı, yerel bir kod
+# değişikliğini görmek için önce yayınlamak gerekirdi.
+# =============================================================================
+
+services:
+  # ---------------------------------------------------------------------------
+  # API — CORS listesi İKİ arayüzü de tanımalı
+  # ---------------------------------------------------------------------------
+  api:
+    environment:
+      # ---------------------------------------------------------------------
+      # DİKKAT: `.env` dosyanızdaki CORS_ORIGINS BU VARSAYILANI EZER.
+      #
+      # Panel ayrı bir origin'den (:3001) geliyor. Listede yoksa panelin HER
+      # isteği CORS'a takılır ve arayüz "Sunucuya ulaşılamadı" der — API
+      # sağlıklı görünür, panel sayfası 200 döner, yalnız veri gelmez. Sessiz
+      # ve teşhisi zor bir kırılma.
+      #
+      # Eski tek uygulamalı `.env` dosyalarında bu değer yalnız :3000
+      # içeriyordu. Depoyu yükselttiyseniz `.env`inizi güncelleyin:
+      #   CORS_ORIGINS=http://localhost:3000,http://localhost:3001
+      # ---------------------------------------------------------------------
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://localhost:3001}
+      # E-posta bağlantıları vitrine işaret eder (doğrulama, şifre sıfırlama).
+      PUBLIC_WEB_URL: ${PUBLIC_WEB_URL:-http://localhost:3000}
+
+  # ---------------------------------------------------------------------------
+  # VİTRİN
+  # ---------------------------------------------------------------------------
+  front:
+    build:
+      context: ../zirve-tarim-front
+      args:
+        # NEXT_PUBLIC_* değerleri DERLEME ANINDA gömülür; tarayıcıdan
+        # erişilebilen adres olmalıdır (servis adı DEĞİL).
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:4000/api/v1}
+        NEXT_PUBLIC_SITE_NAME: ${NEXT_PUBLIC_SITE_NAME:-Zirve Tarım}
+        NEXT_PUBLIC_SITE_URL: ${FRONT_PUBLIC_URL:-http://localhost:3000}
+        # `/uploads` yönlendirmesi DERLEME ANINDA gömülür (next.config.ts).
+        # Konteyner ağı adresi verilmezse hedef `localhost` olur ve konteynerin
+        # İÇİNDE kendisine işaret eder — ürün görselleri 500 döner.
+        INTERNAL_API_URL: http://api:4000/api/v1
+    container_name: zirve-front
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      # Sunucu tarafı render konteyner ağı üzerinden konuşur.
+      INTERNAL_API_URL: http://api:4000/api/v1
+    ports:
+      - '${FRONT_PORT:-3000}:3000'
+    networks:
+      - zirve-network
+
+  # ---------------------------------------------------------------------------
+  # YÖNETİM PANELİ
+  # ---------------------------------------------------------------------------
+  admin:
+    build:
+      context: ../zirve-tarim-admin
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:4000/api/v1}
+        NEXT_PUBLIC_SITE_NAME: ${NEXT_PUBLIC_SITE_NAME:-Zirve Tarım}
+        NEXT_PUBLIC_SITE_URL: ${ADMIN_PUBLIC_URL:-http://localhost:3001}
+        INTERNAL_API_URL: http://api:4000/api/v1
+    container_name: zirve-admin
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      # Panel imajı da 3000 dinler; dışa 3001 olarak yayınlanır.
+      PORT: 3000
+      INTERNAL_API_URL: http://api:4000/api/v1
+    ports:
+      - '${ADMIN_PORT:-3001}:3000'
+    networks:
+      - zirve-network

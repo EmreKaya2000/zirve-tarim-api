@@ -1,6 +1,6 @@
 # =============================================================================
 # apps/api — NestJS çok aşamalı Docker imajı
-# Build bağlamı monorepo KÖKÜDÜR:  docker build -f apps/api/Dockerfile .
+# Build bağlamı DEPO KÖKÜDÜR:  docker build -f apps/api/Dockerfile .
 #
 # İmaj boyutu notu:
 #   .npmrc'de `node-linker=hoisted` olduğu için kökteki node_modules TÜM
@@ -27,9 +27,7 @@ WORKDIR /app
 FROM base AS deps
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc turbo.json ./
 COPY apps/api/package.json ./apps/api/
-COPY apps/web/package.json ./apps/web/
 COPY packages/types/package.json ./packages/types/
-COPY packages/ui/package.json ./packages/ui/
 COPY packages/eslint-config/package.json ./packages/eslint-config/
 COPY packages/typescript-config/package.json ./packages/typescript-config/
 # apps/api postinstall'ı `prisma generate` çalıştırdığı için şema burada gerekli.
