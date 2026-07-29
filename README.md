@@ -147,28 +147,49 @@ tamamı 400 dönüyor ve ölçü birimi gelmediği için varyasyon oluşturulam�
 Düzeltmesi "elle yazılan sayı yerine paylaşılan `MAX_LIMIT` sabitini kullan"
 oldu.
 
-### Bugünkü paylaşım yöntemi: senkron kopya
+### Paylaşım yöntemi: senkron kopya
 
 Front ve Admin depoları paketi `pnpm sync:types` ile **bu depodan kopyalar**.
-Kopya `src/types/` altında durur, başında "ELLE DÜZENLEMEYİN" uyarısı vardır ve
-o depoların CI'ı kopyanın ayrışıp ayrışmadığını kontrol eder.
+Kopya `src/types/` altında durur, her dosyanın başında "ELLE DÜZENLEMEYİN"
+uyarısı vardır ve o depoların CI'ı `pnpm types:check` ile kopyayı yeniden
+üretip `git diff --exit-code` ile ayrışma arar. Elle düzenlenen ya da
+güncellenmeyi unutulan kopya **derlemeyi kırar** — sessizce ayrışamaz.
 
-Neden böyle: paket PRIVATE olacağı için registry'den çekmek **her makinede ve
-her CI işinde** `NODE_AUTH_TOKEN` zorunlu kılar. Senkron kopya, token
-kurulmadan çalışan bir sistem verir ve tek doğru kaynağı korur.
+Paket `private: true`'dur ve **yayınlanmaz.**
 
-### Registry'ye geçiş (token hazır olduğunda)
+### Neden registry kullanılmıyor
 
-1. Bu depoda: **Settings > Actions > General > Workflow permissions** →
-   _Read and write permissions_.
-2. `@zirve/types yayınla` workflow'unu elle tetikle (Actions sekmesi).
-3. Front ve Admin depolarında `NODE_AUTH_TOKEN` secret'ını ekle ve
-   `.npmrc`'ye `@zirve:registry=https://npm.pkg.github.com` satırını koy.
-4. O depolarda `pnpm sync:types` adımını kaldır, `@zirve/types` bağımlılığını
-   sürümle bağla.
+> Bu bölüm bir denemeyi tekrar etmeyi önlemek için burada. Paket bir kez
+> GitHub Packages'a yayınlanmaya çalışıldı ve **çalışmayacağı** görüldü.
 
-Import yolları iki yöntemde de **aynı** (`@zirve/types`), yani geçiş uygulama
-kodunu hiç etkilemez.
+**GitHub Packages npm kayıt defteri, paket kapsamının depo sahibiyle aynı
+olmasını zorunlu tutar.** Depo sahibi `EmreKaya2000` olduğu için paket
+`@emrekaya2000/types` olmak zorundadır. `@zirve/types` yayınlama denemesi şu
+hatayı verir:
+
+```
+403 permission_denied: The requested installation does not exist.
+```
+
+GitHub `zirve` adlı bir kullanıcı/organizasyon arar, bulamaz. Hesapta
+organizasyon yok ve `zirve` adlı bir org mevcut değil.
+
+Kapsamı korumak isteyen üç yol var, üçü de bugünkü kurulumun sağladığından
+fazlasını getirmiyor:
+
+| Yol                                                       | Bedeli                                                             |
+| --------------------------------------------------------- | ------------------------------------------------------------------ |
+| Paketi `@emrekaya2000/types` olarak yeniden adlandır      | 135 dosyada import satırı değişir (api 83, front 15, admin 37)     |
+| GitHub'da `zirve` organizasyonu kur, üç depoyu oraya taşı | Depo adresleri değişir; en temiz ama hesap düzeyinde iş gerektirir |
+| npmjs.com + `@zirve` kapsamı                              | Kapsamın boş olması gerekir; private paket için ücretli plan       |
+
+**Karar: registry kullanılmıyor.** Registry'nin tek getirisi sürüm etiketiydi;
+paylaşımın asıl amacı olan "sözleşme üç repoda ayrışmasın" güvencesi senkron
+kopya + CI kontrolüyle zaten sağlanıyor. Ayrıca private paket, her geliştirici
+makinesinde ve her CI işinde `NODE_AUTH_TOKEN` yönetimi demekti.
+
+Bu karar değişirse yukarıdaki tablodaki yollardan biri seçilmeli; import
+yolunun (`@zirve/types`) değişip değişmemesi seçilen yola bağlıdır.
 
 ## Dokümantasyon
 
