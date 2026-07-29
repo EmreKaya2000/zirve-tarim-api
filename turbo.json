@@ -1,0 +1,91 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+  "ui": "stream",
+
+  // Derleme çıktısını ETKİLEYEN değişkenler. Değişirse önbellek geçersiz olur.
+  "globalEnv": ["NODE_ENV"],
+
+  // Çalışma zamanında okunan, çıktıyı etkilemeyen değişkenler.
+  // Önbelleği geçersiz kılmaz ama sürece geçirilir.
+  "globalPassThroughEnv": [
+    "CI",
+    "DATABASE_URL",
+    "POSTGRES_USER",
+    "POSTGRES_PASSWORD",
+    "POSTGRES_DB",
+    "POSTGRES_PORT",
+    "API_PORT",
+    "API_PREFIX",
+    "SWAGGER_PATH",
+    "SWAGGER_ENABLED",
+    "CORS_ORIGINS",
+    "LOG_LEVEL",
+    "JWT_ACCESS_SECRET",
+    "JWT_REFRESH_SECRET",
+    "JWT_ACCESS_EXPIRES_IN",
+    "JWT_REFRESH_EXPIRES_IN",
+    // Sprint 11 — müşteri (public) kimliği
+    "JWT_CUSTOMER_ACCESS_SECRET",
+    "JWT_CUSTOMER_ACCESS_EXPIRES_IN",
+    "JWT_CUSTOMER_REFRESH_EXPIRES_IN",
+    // Sprint 11 — e-posta sürücüsü
+    "MAIL_DRIVER",
+    "MAIL_FROM_ADDRESS",
+    "MAIL_FROM_NAME",
+    "SMTP_HOST",
+    "SMTP_PORT",
+    "SMTP_SECURE",
+    "SMTP_USER",
+    "SMTP_PASSWORD",
+    "PUBLIC_WEB_URL",
+    "THROTTLE_TTL",
+    "THROTTLE_LIMIT",
+    "PORT",
+    "HOSTNAME",
+    "KEEP_ALIVE_TIMEOUT",
+    "npm_package_version",
+    "SEED_SUPER_ADMIN_EMAIL",
+    "SEED_SUPER_ADMIN_PASSWORD",
+    "SEED_SUPER_ADMIN_NAME",
+    // Sprint 12 — demo verisi kapısı. Üretimde varsayılan olarak kapalıdır.
+    "SEED_DEMO_DATA",
+    // Sprint 12 — Playwright'ın posta kutusunu okuduğu Mailpit adresi.
+    "MAILPIT_URL"
+  ],
+
+  "tasks": {
+    "build": {
+      "dependsOn": ["^build"],
+      "inputs": ["$TURBO_DEFAULT$", "!**/*.md"],
+      "outputs": ["dist/**", ".next/**", "!.next/cache/**"]
+    },
+    "dev": {
+      "dependsOn": ["^build"],
+      "cache": false,
+      "persistent": true
+    },
+    "lint": {
+      "dependsOn": ["^build"]
+    },
+    "lint:fix": {
+      "dependsOn": ["^build"],
+      "cache": false
+    },
+    "typecheck": {
+      "dependsOn": ["^build"]
+    },
+    "test": {
+      "dependsOn": ["^build"],
+      "outputs": ["coverage/**"]
+    },
+    // API e2e testleri Jest ile kaynaktan koşar; derlenmiş çıktıya
+    // ihtiyaç duymaz, yalnız bağımlılıkların derlenmesi yeter.
+    "test:e2e": {
+      "dependsOn": ["^build"],
+      "cache": false
+    },
+    "clean": {
+      "cache": false
+    }
+  }
+}

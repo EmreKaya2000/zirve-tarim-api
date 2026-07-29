@@ -1,0 +1,50 @@
+{
+  "name": "@zirve/types",
+  "version": "0.1.0",
+  "private": false,
+  "license": "UNLICENSED",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./common": {
+      "types": "./dist/common/index.d.ts",
+      "default": "./dist/common/index.js"
+    },
+    "./enums": {
+      "types": "./dist/enums/index.d.ts",
+      "default": "./dist/enums/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "dev": "tsc -p tsconfig.build.json --watch --preserveWatchOutput",
+    "lint": "eslint . --max-warnings 0",
+    "lint:fix": "eslint . --fix",
+    "typecheck": "tsc --noEmit",
+    "test": "echo \"@zirve/types: calistirilabilir kod yok, test atlandi\" && exit 0",
+    "clean": "rm -rf dist .turbo node_modules *.tsbuildinfo"
+  },
+  "devDependencies": {
+    "@zirve/eslint-config": "workspace:*",
+    "@zirve/typescript-config": "workspace:*",
+    "eslint": "^9.18.0",
+    "typescript": "^5.7.3"
+  },
+  "description": "ZirveTarım API sözleşmesi: tipler, enum sabitleri, durum makineleri ve etiketler. Api, Front ve Admin bu paketi paylaşır.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/EmreKaya2000/zirve-tarim-api.git",
+    "directory": "packages/types"
+  },
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com",
+    "access": "restricted"
+  }
+}

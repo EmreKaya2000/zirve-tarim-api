@@ -1,0 +1,83 @@
+name: '@zirve/types yayınla'
+
+# ---------------------------------------------------------------------------
+# @zirve/types PAKETİNİ GitHub Packages'a YAYINLAR
+#
+# NEDEN BU REPODAN: paket API SÖZLEŞMESİDİR — hata kodları, sayfalama
+# sınırları, enum'lar, talep durum makinesi, satış izin kuralları. Sözleşmeyi
+# üreten taraf API olduğu için tek doğru kaynak burasıdır. Front ve Admin
+# tüketir, üretmez.
+#
+# NEDEN ELLE TETİKLENİR: sürüm yükseltmek bilinçli bir karardır. Her push'ta
+# yayınlamak, tüketicileri hiç istemedikleri bir sürüme sürükler.
+#
+# ÖN KOŞUL — henüz sağlanmadıysa bu iş BAŞARISIZ OLUR:
+#   1. Depo ayarlarında Actions'a paket yazma izni verilmeli
+#      (Settings > Actions > General > Workflow permissions: read and write).
+#   2. Tüketici repolar (Front, Admin) paketi çekebilmek için NODE_AUTH_TOKEN
+#      secret'ına ihtiyaç duyar — paket PRIVATE olduğu için kimlik şart.
+#
+# O ADIMLAR TAMAMLANANA KADAR Front ve Admin, paketi `pnpm sync:types` ile
+# bu repodan KOPYALAYARAK kullanır. Geçiş tek satırlıktır; ayrıntı README'de.
+# ---------------------------------------------------------------------------
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Yayınlanacak sürüm (ör. 0.1.1). Boş bırakılırsa package.json içindeki sürüm kullanılır.'
+        required: false
+        type: string
+
+env:
+  NODE_VERSION: '22'
+  PNPM_VERSION: '9.15.9'
+
+jobs:
+  publish:
+    name: Derle · Doğrula · Yayınla
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Depoyu çek
+        uses: actions/checkout@v4
+
+      - name: pnpm kur
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Node.js kur
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+          registry-url: 'https://npm.pkg.github.com'
+          scope: '@zirve'
+
+      - name: Bağımlılıkları kur
+        run: pnpm install --frozen-lockfile
+
+      # Yayından ÖNCE doğrula: kırık bir sözleşme paketi, üç uygulamayı birden
+      # bozar. Yayın geri alınamaz (aynı sürüm ikinci kez yayınlanamaz).
+      - name: Lint ve tip kontrolü
+        run: |
+          pnpm --filter @zirve/types lint
+          pnpm --filter @zirve/types typecheck
+
+      - name: Sürümü ayarla
+        if: inputs.version != ''
+        run: pnpm --filter @zirve/types exec npm version ${{ inputs.version }} --no-git-tag-version
+
+      - name: Derle
+        run: pnpm --filter @zirve/types build
+
+      - name: Yayınla
+        run: pnpm --filter @zirve/types publish --no-git-checks
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

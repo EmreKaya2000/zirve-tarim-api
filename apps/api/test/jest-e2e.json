@@ -1,0 +1,18 @@
+{
+  "moduleFileExtensions": ["js", "json", "ts"],
+  "rootDir": "..",
+  "testEnvironment": "<rootDir>/test/support/isolated-schema-environment.ts",
+  "testRegex": ".e2e-spec.ts$",
+  "transform": {
+    "^.+\\.(t|j)s$": [
+      "ts-jest",
+      {
+        "tsconfig": "<rootDir>/tsconfig.json"
+      }
+    ]
+  },
+  "setupFiles": ["<rootDir>/test/setup-env.ts"],
+  "testTimeout": 30000,
+  "globalSetup": "<rootDir>/test/support/global-setup.ts",
+  "testPathIgnorePatterns": ["<rootDir>/test/support/"]
+}

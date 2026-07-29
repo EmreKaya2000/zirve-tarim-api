@@ -1,0 +1,1124 @@
+// =============================================================================
+// Zirve Tarım — Prisma Schema TASLAĞI (Sprint 0)
+// -----------------------------------------------------------------------------
+// Bu dosya bir MİMARİ TASLAKTIR. Sprint 1'de apps/api/prisma/schema.prisma
+// konumuna taşınacak ve ilk migration bu şemadan üretilecektir.
+//
+// Kurallar (Master Prompt):
+//  - Tüm tablolarda UUID id, createdAt, updatedAt; gerekli tablolarda deletedAt.
+//  - Tarihler UTC (@db.Timestamptz(6)).
+//  - Para alanları Decimal (PostgreSQL numeric) — asla Float değil.
+//  - Finansal kayıtlar hard delete edilmez.
+//  - Satış anındaki ürün/fiyat bilgileri snapshot saklanır.
+//
+// Para/miktar hassasiyet standardı:
+//  - Tutar        : Decimal(18, 4)   -> numeric(18,4)
+//  - Miktar       : Decimal(18, 3)   -> numeric(18,3)  (kg/litre için ondalık)
+//  - Oran (KDV/%) : Decimal(6, 3)    -> numeric(6,3)
+//  - Kur          : Decimal(18, 8)   -> numeric(18,8)
+// =============================================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// =============================================================================
+// ENUMS
+// =============================================================================
+
+enum UserRole {
+  SUPER_ADMIN
+  ADMIN
+}
+
+enum UserStatus {
+  ACTIVE
+  PASSIVE
+  LOCKED
+}
+
+/// VARSAYIM: Sistem para birimi TRY. Yapı çoklu para birimine hazır tutulur.
+enum CurrencyCode {
+  TRY
+  USD
+  EUR
+}
+
+enum CustomerType {
+  INDIVIDUAL
+  CORPORATE
+}
+
+/// VARSAYIM: Ziraat mağazası için yaygın satış birimleri.
+enum ProductUnit {
+  PIECE
+  KILOGRAM
+  GRAM
+  LITER
+  MILLILITER
+  TON
+  PACKAGE
+  BOX
+  SACK
+  BOTTLE
+  METER
+}
+
+/// Ürünler arası ilişki tipleri. Üçü de SİMETRİK ilişkilerdir.
+enum ProductRelationType {
+  COMPATIBLE
+  INCOMPATIBLE
+  SIMILAR
+}
+
+enum DiscountType {
+  NONE
+  PERCENTAGE
+  FIXED
+}
+
+enum RequestSource {
+  WEB
+  MOBILE
+  PHONE
+  IN_STORE
+}
+
+enum RequestStatus {
+  NEW
+  REVIEWING
+  CONTACTED
+  QUOTED
+  APPROVED
+  CONVERTED
+  REJECTED
+  CANCELLED
+}
+
+enum SaleStatus {
+  DRAFT
+  CONFIRMED
+  CANCELLED
+}
+
+enum SalePaymentStatus {
+  UNPAID
+  PARTIALLY_PAID
+  PAID
+  OVERPAID
+}
+
+enum PaymentDirection {
+  INBOUND
+  OUTBOUND
+}
+
+enum PaymentMethod {
+  CASH
+  BANK_TRANSFER
+  CREDIT_CARD
+  CHECK
+  PROMISSORY_NOTE
+  OFFSET
+}
+
+/// Çek/senet gibi vadeli araçlar için tahsilat durumu.
+enum PaymentStatus {
+  PENDING
+  CLEARED
+  BOUNCED
+  CANCELLED
+}
+
+enum StockMovementType {
+  INITIAL
+  PURCHASE_IN
+  SALE_OUT
+  SALE_CANCEL_IN
+  CUSTOMER_RETURN_IN
+  SUPPLIER_RETURN_OUT
+  ADJUSTMENT_IN
+  ADJUSTMENT_OUT
+  WASTAGE_OUT
+}
+
+enum StockMovementDirection {
+  IN
+  OUT
+}
+
+enum PurchaseStatus {
+  DRAFT
+  CONFIRMED
+  CANCELLED
+}
+
+enum ExpenseStatus {
+  PENDING
+  PAID
+  CANCELLED
+}
+
+enum CashAccountType {
+  CASH_BOX
+  BANK
+  POS
+}
+
+enum CashTransactionDirection {
+  IN
+  OUT
+}
+
+/// Cari hesap (müşteri borç/alacak) defter kaydı tipi.
+enum LedgerEntryType {
+  OPENING_BALANCE
+  SALE
+  PAYMENT_IN
+  PAYMENT_OUT
+  SALE_CANCEL
+  RETURN
+  ADJUSTMENT
+}
+
+enum AuditAction {
+  CREATE
+  UPDATE
+  SOFT_DELETE
+  RESTORE
+  DELETE
+  LOGIN
+  LOGIN_FAILED
+  LOGOUT
+  STATUS_CHANGE
+  PRICE_CHANGE
+  STOCK_ADJUST
+  PAYMENT_RECORDED
+  SALE_CANCELLED
+}
+
+enum ContactMessageStatus {
+  NEW
+  READ
+  ANSWERED
+  ARCHIVED
+}
+
+/// Numaralandırılan belge türleri (DocumentCounter için).
+enum DocumentType {
+  REQUEST
+  SALE
+  PAYMENT
+  PURCHASE
+  EXPENSE
+}
+
+// =============================================================================
+// KİMLİK & YETKİ
+// =============================================================================
+
+model User {
+  id               String     @id @default(uuid()) @db.Uuid
+  email            String     @unique @db.VarChar(255)
+  passwordHash     String     @db.VarChar(255)
+  fullName         String     @db.VarChar(150)
+  phone            String?    @db.VarChar(30)
+  role             UserRole   @default(ADMIN)
+  status           UserStatus @default(ACTIVE)
+  lastLoginAt      DateTime?  @db.Timestamptz(6)
+  failedLoginCount Int        @default(0)
+  lockedUntil      DateTime?  @db.Timestamptz(6)
+  createdAt        DateTime   @default(now()) @db.Timestamptz(6)
+  updatedAt        DateTime   @updatedAt @db.Timestamptz(6)
+  deletedAt        DateTime?  @db.Timestamptz(6)
+
+  refreshTokens          RefreshToken[]
+  auditLogs              AuditLog[]
+  assignedRequests       Request[]              @relation("RequestAssignedUser")
+  createdSales           Sale[]                 @relation("SaleCreatedBy")
+  cancelledSales         Sale[]                 @relation("SaleCancelledBy")
+  createdPayments        Payment[]              @relation("PaymentCreatedBy")
+  createdPurchases       Purchase[]             @relation("PurchaseCreatedBy")
+  createdStockMovements  StockMovement[]        @relation("StockMovementCreatedBy")
+  createdExpenses        Expense[]              @relation("ExpenseCreatedBy")
+  createdCashTx          CashTransaction[]      @relation("CashTxCreatedBy")
+  priceChanges           ProductPriceHistory[]  @relation("PriceChangedBy")
+  createdLedgerEntries   CustomerLedgerEntry[]  @relation("LedgerCreatedBy")
+  handledContactMessages ContactMessage[]       @relation("ContactHandledBy")
+
+  @@index([role, status])
+  @@index([deletedAt])
+  @@map("users")
+}
+
+model RefreshToken {
+  id         String    @id @default(uuid()) @db.Uuid
+  userId     String    @db.Uuid
+  tokenHash  String    @unique @db.VarChar(255)
+  userAgent  String?   @db.VarChar(255)
+  ipAddress  String?   @db.VarChar(64)
+  expiresAt  DateTime  @db.Timestamptz(6)
+  revokedAt  DateTime? @db.Timestamptz(6)
+  createdAt  DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt  DateTime  @updatedAt @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, revokedAt])
+  @@index([expiresAt])
+  @@map("refresh_tokens")
+}
+
+/// Finansal ve kritik işlemler için değiştirilemez denetim kaydı.
+/// VARSAYIM: Bu tabloda UPDATE/DELETE yapılmaz (yalnız INSERT).
+model AuditLog {
+  id         String      @id @default(uuid()) @db.Uuid
+  userId     String?     @db.Uuid
+  action     AuditAction
+  entityType String      @db.VarChar(80)
+  entityId   String?     @db.Uuid
+  /// Değişiklik öncesi/sonrası alan bazlı fark.
+  beforeData Json?
+  afterData  Json?
+  ipAddress  String?     @db.VarChar(64)
+  userAgent  String?     @db.VarChar(255)
+  createdAt  DateTime    @default(now()) @db.Timestamptz(6)
+  updatedAt  DateTime    @updatedAt @db.Timestamptz(6)
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([entityType, entityId])
+  @@index([userId, createdAt])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+// =============================================================================
+// KATALOG
+// =============================================================================
+
+model Category {
+  id          String    @id @default(uuid()) @db.Uuid
+  parentId    String?   @db.Uuid
+  name        String    @db.VarChar(150)
+  slug        String    @unique @db.VarChar(180)
+  description String?   @db.Text
+  imageUrl    String?   @db.VarChar(500)
+  sortOrder   Int       @default(0)
+  isActive    Boolean   @default(true)
+  metaTitle   String?   @db.VarChar(200)
+  metaDesc    String?   @db.VarChar(400)
+  createdAt   DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt   DateTime  @updatedAt @db.Timestamptz(6)
+  deletedAt   DateTime? @db.Timestamptz(6)
+
+  parent   Category?  @relation("CategoryTree", fields: [parentId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  children Category[] @relation("CategoryTree")
+  products Product[]
+
+  @@index([parentId, sortOrder])
+  @@index([isActive, deletedAt])
+  @@map("categories")
+}
+
+model Brand {
+  id          String    @id @default(uuid()) @db.Uuid
+  name        String    @db.VarChar(150)
+  slug        String    @unique @db.VarChar(180)
+  description String?   @db.Text
+  logoUrl     String?   @db.VarChar(500)
+  websiteUrl  String?   @db.VarChar(500)
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt   DateTime  @updatedAt @db.Timestamptz(6)
+  deletedAt   DateTime? @db.Timestamptz(6)
+
+  products Product[]
+
+  @@index([isActive, deletedAt])
+  @@map("brands")
+}
+
+model Product {
+  id          String  @id @default(uuid()) @db.Uuid
+  sku         String  @unique @db.VarChar(64)
+  slug        String  @unique @db.VarChar(220)
+  name        String  @db.VarChar(220)
+  shortDesc   String? @db.VarChar(500)
+  description String? @db.Text
+  categoryId  String  @db.Uuid
+  brandId     String? @db.Uuid
+
+  unit    ProductUnit  @default(PIECE)
+  /// Ambalaj büyüklüğü (ör. 5 litrelik bidon -> 5). Bilgi amaçlı.
+  packageSize Decimal? @db.Decimal(18, 3)
+
+  // --- Fiyatlandırma (HASSAS: purchasePrice public response'a ASLA sızmaz) ---
+  currency      CurrencyCode @default(TRY)
+  purchasePrice Decimal      @default(0) @db.Decimal(18, 4)
+  salePrice     Decimal      @default(0) @db.Decimal(18, 4)
+  /// KDV oranı yüzde olarak (ör. 20.000 = %20).
+  taxRate       Decimal      @default(0) @db.Decimal(6, 3)
+  /// Fiyata KDV dahil mi? VARSAYIM: perakende mağaza -> dahil.
+  taxIncluded   Boolean      @default(true)
+
+  // --- Stok ---
+  stockQuantity   Decimal @default(0) @db.Decimal(18, 3)
+  /// Kritik stok eşiği; altına düşünce uyarı üretilir.
+  criticalStock   Decimal @default(0) @db.Decimal(18, 3)
+  /// Ağırlıklı ortalama maliyet (HASSAS). Alışlarda güncellenir.
+  averageCost     Decimal @default(0) @db.Decimal(18, 4)
+  trackStock      Boolean @default(true)
+
+  // --- Ziraat alanına özgü nitelikler ---
+  /// VARSAYIM: Zirai ilaçlar için etken madde bilgisi.
+  activeIngredient String? @db.VarChar(300)
+  /// Önerilen doz açıklaması (serbest metin).
+  dosage           String? @db.VarChar(300)
+  /// Bakanlık ruhsat numarası (zirai ilaç/gübre).
+  licenseNumber    String? @db.VarChar(100)
+  /// Uygulanabildiği bitkiler/hedef zararlılar.
+  targetCrops      String? @db.Text
+
+  isActive   Boolean @default(true)
+  isFeatured Boolean @default(false)
+  /// Public katalogda fiyat gösterilsin mi? VARSAYIM: bazı ürünlerde "fiyat sorunuz".
+  showPrice  Boolean @default(true)
+
+  metaTitle String? @db.VarChar(200)
+  metaDesc  String? @db.VarChar(400)
+  viewCount Int     @default(0)
+
+  createdAt DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime  @updatedAt @db.Timestamptz(6)
+  deletedAt DateTime? @db.Timestamptz(6)
+
+  category       Category              @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  brand          Brand?                @relation(fields: [brandId], references: [id], onDelete: SetNull)
+  images         ProductImage[]
+  attributes     ProductAttribute[]
+  relationsAsA   ProductRelation[]     @relation("ProductRelationA")
+  relationsAsB   ProductRelation[]     @relation("ProductRelationB")
+  priceHistory   ProductPriceHistory[]
+  stockMovements StockMovement[]
+  requestItems   RequestItem[]
+  saleItems      SaleItem[]
+  purchaseItems  PurchaseItem[]
+
+  @@index([categoryId, isActive])
+  @@index([brandId])
+  @@index([isActive, deletedAt])
+  @@index([isFeatured, isActive])
+  @@index([stockQuantity])
+  @@map("products")
+}
+
+model ProductImage {
+  id        String   @id @default(uuid()) @db.Uuid
+  productId String   @db.Uuid
+  url       String   @db.VarChar(500)
+  altText   String?  @db.VarChar(250)
+  sortOrder Int      @default(0)
+  isPrimary Boolean  @default(false)
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @db.Timestamptz(6)
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([productId, sortOrder])
+  @@map("product_images")
+}
+
+model ProductAttribute {
+  id        String   @id @default(uuid()) @db.Uuid
+  productId String   @db.Uuid
+  name      String   @db.VarChar(120)
+  value     String   @db.VarChar(500)
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @db.Timestamptz(6)
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([productId, name])
+  @@index([productId, sortOrder])
+  @@map("product_attributes")
+}
+
+/// SİMETRİK ürün ilişkisi. Tek satırda saklanır; kanonik sıralama zorunludur:
+/// productAId < productBId (string karşılaştırması, DB CHECK ile garanti).
+/// Karar gerekçesi için ARCHITECTURE.md §13.2.
+model ProductRelation {
+  id          String              @id @default(uuid()) @db.Uuid
+  productAId  String              @db.Uuid
+  productBId  String              @db.Uuid
+  type        ProductRelationType
+  /// INCOMPATIBLE için zorunlu: neden karıştırılmamalı.
+  note        String?             @db.VarChar(500)
+  createdAt   DateTime            @default(now()) @db.Timestamptz(6)
+  updatedAt   DateTime            @updatedAt @db.Timestamptz(6)
+
+  productA Product @relation("ProductRelationA", fields: [productAId], references: [id], onDelete: Cascade)
+  productB Product @relation("ProductRelationB", fields: [productBId], references: [id], onDelete: Cascade)
+
+  @@unique([productAId, productBId, type])
+  @@index([productBId, type])
+  @@index([productAId, type])
+  @@map("product_relations")
+}
+
+/// Fiyat değişim geçmişi. Satış snapshot'ından bağımsızdır; raporlama içindir.
+model ProductPriceHistory {
+  id               String       @id @default(uuid()) @db.Uuid
+  productId        String       @db.Uuid
+  changedById      String?      @db.Uuid
+  currency         CurrencyCode @default(TRY)
+  oldPurchasePrice Decimal      @db.Decimal(18, 4)
+  newPurchasePrice Decimal      @db.Decimal(18, 4)
+  oldSalePrice     Decimal      @db.Decimal(18, 4)
+  newSalePrice     Decimal      @db.Decimal(18, 4)
+  reason           String?      @db.VarChar(300)
+  createdAt        DateTime     @default(now()) @db.Timestamptz(6)
+  updatedAt        DateTime     @updatedAt @db.Timestamptz(6)
+
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  changedBy User?   @relation("PriceChangedBy", fields: [changedById], references: [id], onDelete: SetNull)
+
+  @@index([productId, createdAt])
+  @@map("product_price_history")
+}
+
+// =============================================================================
+// MÜŞTERİ & CARİ
+// =============================================================================
+
+model Customer {
+  id       String       @id @default(uuid()) @db.Uuid
+  code     String       @unique @db.VarChar(40)
+  type     CustomerType @default(INDIVIDUAL)
+  fullName String       @db.VarChar(200)
+  /// Kurumsal müşteride ticari unvan.
+  companyName String?   @db.VarChar(250)
+  phone    String       @db.VarChar(30)
+  altPhone String?      @db.VarChar(30)
+  email    String?      @db.VarChar(255)
+  /// TCKN (bireysel) veya VKN (kurumsal).
+  taxNumber String?     @db.VarChar(20)
+  taxOffice String?     @db.VarChar(120)
+
+  /// Kredi limiti — borç bu limiti aşarsa yeni veresiye satış uyarı üretir.
+  creditLimit Decimal      @default(0) @db.Decimal(18, 4)
+  currency    CurrencyCode @default(TRY)
+  /// Devir bakiyesi (sisteme geçişte). Pozitif = müşteri borçlu.
+  openingBalance Decimal   @default(0) @db.Decimal(18, 4)
+  /// TÜRETİLMİŞ ALAN: cari bakiye. Transaction içinde güncellenir.
+  /// Pozitif = müşteri borçlu, negatif = müşteri alacaklı (fazla ödeme).
+  currentBalance Decimal   @default(0) @db.Decimal(18, 4)
+
+  note      String?   @db.Text
+  isActive  Boolean   @default(true)
+  createdAt DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime  @updatedAt @db.Timestamptz(6)
+  deletedAt DateTime? @db.Timestamptz(6)
+
+  addresses     CustomerAddress[]
+  requests      Request[]
+  sales         Sale[]
+  payments      Payment[]
+  ledgerEntries CustomerLedgerEntry[]
+
+  @@index([phone])
+  @@index([isActive, deletedAt])
+  @@index([currentBalance])
+  @@map("customers")
+}
+
+model CustomerAddress {
+  id         String   @id @default(uuid()) @db.Uuid
+  customerId String   @db.Uuid
+  title      String   @db.VarChar(100)
+  city       String   @db.VarChar(80)
+  district   String   @db.VarChar(80)
+  fullAddress String  @db.Text
+  isDefault  Boolean  @default(false)
+  createdAt  DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt  DateTime @updatedAt @db.Timestamptz(6)
+  deletedAt  DateTime? @db.Timestamptz(6)
+
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@index([customerId])
+  @@map("customer_addresses")
+}
+
+/// Cari hesap defteri — müşteri borç/alacak hareketlerinin değişmez kaydı.
+/// Customer.currentBalance bu defterin türevidir ve mutabakatla doğrulanır.
+model CustomerLedgerEntry {
+  id          String          @id @default(uuid()) @db.Uuid
+  customerId  String          @db.Uuid
+  entryType   LedgerEntryType
+  saleId      String?         @db.Uuid
+  paymentId   String?         @db.Uuid
+  createdById String?         @db.Uuid
+
+  currency CurrencyCode @default(TRY)
+  /// Borç (müşteriyi borçlandıran) tutar.
+  debit    Decimal      @default(0) @db.Decimal(18, 4)
+  /// Alacak (müşterinin borcunu azaltan) tutar.
+  credit   Decimal      @default(0) @db.Decimal(18, 4)
+  /// Bu kayıttan SONRAKİ bakiye (denetim kolaylığı için).
+  balanceAfter Decimal   @db.Decimal(18, 4)
+
+  description String?  @db.VarChar(300)
+  entryDate   DateTime @db.Timestamptz(6)
+  createdAt   DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt   DateTime @updatedAt @db.Timestamptz(6)
+
+  customer  Customer @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  sale      Sale?    @relation(fields: [saleId], references: [id], onDelete: Restrict)
+  payment   Payment? @relation(fields: [paymentId], references: [id], onDelete: Restrict)
+  createdBy User?    @relation("LedgerCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([customerId, entryDate])
+  @@index([saleId])
+  @@index([paymentId])
+  @@map("customer_ledger_entries")
+}
+
+// =============================================================================
+// TALEP (SEPET -> MAĞAZAYA TALEP)
+// =============================================================================
+
+model Request {
+  id            String        @id @default(uuid()) @db.Uuid
+  requestNumber String        @unique @db.VarChar(32)
+  customerId    String?       @db.Uuid
+  assignedToId  String?       @db.Uuid
+  status        RequestStatus @default(NEW)
+  source        RequestSource @default(WEB)
+
+  // --- Talep sahibi bilgisi SNAPSHOT (giriş yapmayan ziyaretçi de talep açabilir) ---
+  contactName  String  @db.VarChar(200)
+  contactPhone String  @db.VarChar(30)
+  contactEmail String? @db.VarChar(255)
+  city         String? @db.VarChar(80)
+  district     String? @db.VarChar(80)
+  customerNote String? @db.Text
+  /// Sadece admin görür.
+  internalNote String? @db.Text
+
+  /// Talep anındaki tahmini toplam (satış fiyatı üzerinden, bilgi amaçlı).
+  currency       CurrencyCode @default(TRY)
+  estimatedTotal Decimal      @default(0) @db.Decimal(18, 4)
+
+  rejectReason String?   @db.VarChar(500)
+  contactedAt  DateTime? @db.Timestamptz(6)
+  convertedAt  DateTime? @db.Timestamptz(6)
+  closedAt     DateTime? @db.Timestamptz(6)
+
+  /// Spam/abuse analizi için.
+  ipAddress String? @db.VarChar(64)
+  userAgent String? @db.VarChar(255)
+
+  createdAt DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime  @updatedAt @db.Timestamptz(6)
+  deletedAt DateTime? @db.Timestamptz(6)
+
+  customer   Customer?     @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  assignedTo User?         @relation("RequestAssignedUser", fields: [assignedToId], references: [id], onDelete: SetNull)
+  items      RequestItem[]
+  sale       Sale?
+
+  @@index([status, createdAt])
+  @@index([customerId])
+  @@index([contactPhone])
+  @@index([assignedToId, status])
+  @@map("requests")
+}
+
+model RequestItem {
+  id        String  @id @default(uuid()) @db.Uuid
+  requestId String  @db.Uuid
+  productId String? @db.Uuid
+
+  // --- SNAPSHOT: talep anındaki ürün bilgisi ---
+  productName String      @db.VarChar(220)
+  productSku  String      @db.VarChar(64)
+  unit        ProductUnit
+  quantity    Decimal     @db.Decimal(18, 3)
+  /// Talep anındaki liste satış fiyatı (bilgi amaçlı, bağlayıcı değil).
+  unitPrice   Decimal     @default(0) @db.Decimal(18, 4)
+  lineTotal   Decimal     @default(0) @db.Decimal(18, 4)
+  note        String?     @db.VarChar(300)
+
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @db.Timestamptz(6)
+
+  request Request  @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  product Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+
+  @@index([requestId])
+  @@index([productId])
+  @@map("request_items")
+}
+
+// =============================================================================
+// SATIŞ
+// =============================================================================
+
+model Sale {
+  id         String @id @default(uuid()) @db.Uuid
+  saleNumber String @unique @db.VarChar(32)
+  customerId String @db.Uuid
+  /// Talepten dönüştüyse kaynağı. Bir talep en fazla bir satışa dönüşür.
+  requestId  String? @unique @db.Uuid
+
+  status        SaleStatus        @default(DRAFT)
+  paymentStatus SalePaymentStatus @default(UNPAID)
+  currency      CurrencyCode      @default(TRY)
+  /// TRY dışı satışta işlem anındaki kur (TRY karşılığı).
+  exchangeRate  Decimal           @default(1) @db.Decimal(18, 8)
+
+  // --- Tutarlar (hepsi transaction içinde hesaplanır) ---
+  subtotal      Decimal      @default(0) @db.Decimal(18, 4)
+  discountType  DiscountType @default(NONE)
+  discountValue Decimal      @default(0) @db.Decimal(18, 4)
+  discountTotal Decimal      @default(0) @db.Decimal(18, 4)
+  taxTotal      Decimal      @default(0) @db.Decimal(18, 4)
+  grandTotal    Decimal      @default(0) @db.Decimal(18, 4)
+
+  // --- TÜRETİLMİŞ (stored) alanlar: ARCHITECTURE.md §13.1 kararı ---
+  paidTotal      Decimal @default(0) @db.Decimal(18, 4)
+  remainingTotal Decimal @default(0) @db.Decimal(18, 4)
+  /// HASSAS: maliyet içerir, public'e ASLA sızmaz.
+  costTotal      Decimal @default(0) @db.Decimal(18, 4)
+  grossProfit    Decimal @default(0) @db.Decimal(18, 4)
+  netProfit      Decimal @default(0) @db.Decimal(18, 4)
+
+  saleDate  DateTime  @db.Timestamptz(6)
+  dueDate   DateTime? @db.Timestamptz(6)
+  note      String?   @db.Text
+
+  createdById   String    @db.Uuid
+  cancelledById String?   @db.Uuid
+  cancelledAt   DateTime? @db.Timestamptz(6)
+  cancelReason  String?   @db.VarChar(500)
+  confirmedAt   DateTime? @db.Timestamptz(6)
+
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @db.Timestamptz(6)
+
+  customer            Customer              @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  request             Request?              @relation(fields: [requestId], references: [id], onDelete: SetNull)
+  createdBy           User                  @relation("SaleCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  cancelledBy         User?                 @relation("SaleCancelledBy", fields: [cancelledById], references: [id], onDelete: SetNull)
+  items               SaleItem[]
+  paymentAllocations  PaymentAllocation[]
+  stockMovements      StockMovement[]
+  ledgerEntries       CustomerLedgerEntry[]
+
+  @@index([customerId, saleDate])
+  @@index([status, saleDate])
+  @@index([paymentStatus, dueDate])
+  @@index([saleDate])
+  @@map("sales")
+}
+
+model SaleItem {
+  id        String  @id @default(uuid()) @db.Uuid
+  saleId    String  @db.Uuid
+  productId String? @db.Uuid
+
+  // --- SNAPSHOT: satış anındaki ürün bilgisi (KURAL 5) ---
+  productName String      @db.VarChar(220)
+  productSku  String      @db.VarChar(64)
+  unit        ProductUnit
+  quantity    Decimal     @db.Decimal(18, 3)
+  unitPrice   Decimal     @db.Decimal(18, 4)
+  /// HASSAS: satış anındaki birim maliyet snapshot'ı (kâr hesabı için).
+  unitCost    Decimal     @default(0) @db.Decimal(18, 4)
+
+  discountType  DiscountType @default(NONE)
+  discountValue Decimal      @default(0) @db.Decimal(18, 4)
+  discountTotal Decimal      @default(0) @db.Decimal(18, 4)
+  taxRate       Decimal      @default(0) @db.Decimal(6, 3)
+  taxTotal      Decimal      @default(0) @db.Decimal(18, 4)
+  /// KDV hariç net satır tutarı (iskonto düşülmüş).
+  lineSubtotal  Decimal      @db.Decimal(18, 4)
+  /// KDV dahil satır toplamı.
+  lineTotal     Decimal      @db.Decimal(18, 4)
+  /// HASSAS: lineSubtotal - (unitCost * quantity)
+  lineProfit    Decimal      @default(0) @db.Decimal(18, 4)
+
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @db.Timestamptz(6)
+
+  sale    Sale     @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  product Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+
+  @@index([saleId, sortOrder])
+  @@index([productId])
+  @@map("sale_items")
+}
+
+// =============================================================================
+// ÖDEME & TAHSİLAT
+// =============================================================================
+
+model Payment {
+  id            String           @id @default(uuid()) @db.Uuid
+  paymentNumber String           @unique @db.VarChar(32)
+  customerId    String           @db.Uuid
+  direction     PaymentDirection @default(INBOUND)
+  method        PaymentMethod
+  status        PaymentStatus    @default(CLEARED)
+
+  currency     CurrencyCode @default(TRY)
+  exchangeRate Decimal      @default(1) @db.Decimal(18, 8)
+  amount       Decimal      @db.Decimal(18, 4)
+  /// Satışlara dağıtılmış tutar. amount - allocatedAmount = avans/açık bakiye.
+  allocatedAmount Decimal   @default(0) @db.Decimal(18, 4)
+
+  paymentDate DateTime  @db.Timestamptz(6)
+  /// Çek/senet vade tarihi.
+  dueDate     DateTime? @db.Timestamptz(6)
+  /// Çek/senet no, dekont no, POS slip no.
+  referenceNo String?   @db.VarChar(120)
+  bankName    String?   @db.VarChar(150)
+  note        String?   @db.Text
+
+  createdById   String    @db.Uuid
+  cancelledAt   DateTime? @db.Timestamptz(6)
+  cancelReason  String?   @db.VarChar(500)
+
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @db.Timestamptz(6)
+
+  customer        Customer              @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  createdBy       User                  @relation("PaymentCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  allocations     PaymentAllocation[]
+  ledgerEntries   CustomerLedgerEntry[]
+  cashTransaction CashTransaction?
+
+  @@index([customerId, paymentDate])
+  @@index([status, dueDate])
+  @@index([paymentDate])
+  @@map("payments")
+}
+
+/// Bir ödemenin bir veya birden fazla satışa dağıtımı (kısmi ödeme / toplu tahsilat).
+model PaymentAllocation {
+  id        String   @id @default(uuid()) @db.Uuid
+  paymentId String   @db.Uuid
+  saleId    String   @db.Uuid
+  amount    Decimal  @db.Decimal(18, 4)
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @db.Timestamptz(6)
+
+  payment Payment @relation(fields: [paymentId], references: [id], onDelete: Restrict)
+  sale    Sale    @relation(fields: [saleId], references: [id], onDelete: Restrict)
+
+  @@unique([paymentId, saleId])
+  @@index([saleId])
+  @@map("payment_allocations")
+}
+
+// =============================================================================
+// TEDARİK & STOK
+// =============================================================================
+
+model Supplier {
+  id        String    @id @default(uuid()) @db.Uuid
+  code      String    @unique @db.VarChar(40)
+  name      String    @db.VarChar(200)
+  phone     String?   @db.VarChar(30)
+  email     String?   @db.VarChar(255)
+  taxNumber String?   @db.VarChar(20)
+  taxOffice String?   @db.VarChar(120)
+  address   String?   @db.Text
+  note      String?   @db.Text
+  isActive  Boolean   @default(true)
+  createdAt DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime  @updatedAt @db.Timestamptz(6)
+  deletedAt DateTime? @db.Timestamptz(6)
+
+  purchases Purchase[]
+
+  @@index([isActive, deletedAt])
+  @@map("suppliers")
+}
+
+model Purchase {
+  id             String         @id @default(uuid()) @db.Uuid
+  purchaseNumber String         @unique @db.VarChar(32)
+  supplierId     String         @db.Uuid
+  status         PurchaseStatus @default(DRAFT)
+
+  currency     CurrencyCode @default(TRY)
+  exchangeRate Decimal      @default(1) @db.Decimal(18, 8)
+  subtotal     Decimal      @default(0) @db.Decimal(18, 4)
+  taxTotal     Decimal      @default(0) @db.Decimal(18, 4)
+  grandTotal   Decimal      @default(0) @db.Decimal(18, 4)
+
+  purchaseDate DateTime  @db.Timestamptz(6)
+  invoiceNo    String?   @db.VarChar(120)
+  note         String?   @db.Text
+  createdById  String    @db.Uuid
+  confirmedAt  DateTime? @db.Timestamptz(6)
+  cancelledAt  DateTime? @db.Timestamptz(6)
+
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @db.Timestamptz(6)
+
+  supplier       Supplier        @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+  createdBy      User            @relation("PurchaseCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  items          PurchaseItem[]
+  stockMovements StockMovement[]
+
+  @@index([supplierId, purchaseDate])
+  @@index([status, purchaseDate])
+  @@map("purchases")
+}
+
+model PurchaseItem {
+  id         String  @id @default(uuid()) @db.Uuid
+  purchaseId String  @db.Uuid
+  productId  String? @db.Uuid
+
+  productName String      @db.VarChar(220)
+  productSku  String      @db.VarChar(64)
+  unit        ProductUnit
+  quantity    Decimal     @db.Decimal(18, 3)
+  unitCost    Decimal     @db.Decimal(18, 4)
+  taxRate     Decimal     @default(0) @db.Decimal(6, 3)
+  taxTotal    Decimal     @default(0) @db.Decimal(18, 4)
+  lineTotal   Decimal     @db.Decimal(18, 4)
+
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @db.Timestamptz(6)
+
+  purchase Purchase @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+  product  Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+
+  @@index([purchaseId])
+  @@index([productId])
+  @@map("purchase_items")
+}
+
+/// Değişmez stok hareket defteri. Product.stockQuantity bu defterin türevidir.
+model StockMovement {
+  id         String                 @id @default(uuid()) @db.Uuid
+  productId  String                 @db.Uuid
+  type       StockMovementType
+  direction  StockMovementDirection
+
+  /// Her zaman POZİTİF mutlak miktar; yön `direction` alanındadır.
+  quantity     Decimal @db.Decimal(18, 3)
+  /// Hareket sonrası stok (denetim ve hızlı geçmiş için).
+  balanceAfter Decimal @db.Decimal(18, 3)
+  /// HASSAS: hareket anındaki birim maliyet.
+  unitCost     Decimal @default(0) @db.Decimal(18, 4)
+
+  saleId     String? @db.Uuid
+  purchaseId String? @db.Uuid
+  /// FK olmayan referanslar için (ör. manuel sayım fişi).
+  referenceNote String? @db.VarChar(300)
+  reason        String? @db.VarChar(300)
+
+  createdById  String?  @db.Uuid
+  movementDate DateTime @db.Timestamptz(6)
+  createdAt    DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt    DateTime @updatedAt @db.Timestamptz(6)
+
+  product   Product   @relation(fields: [productId], references: [id], onDelete: Restrict)
+  sale      Sale?     @relation(fields: [saleId], references: [id], onDelete: Restrict)
+  purchase  Purchase? @relation(fields: [purchaseId], references: [id], onDelete: Restrict)
+  createdBy User?     @relation("StockMovementCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([productId, movementDate])
+  @@index([type, movementDate])
+  @@index([saleId])
+  @@index([purchaseId])
+  @@map("stock_movements")
+}
+
+// =============================================================================
+// FİNANS (KASA & GİDER)
+// =============================================================================
+
+model CashAccount {
+  id       String          @id @default(uuid()) @db.Uuid
+  name     String          @db.VarChar(150)
+  type     CashAccountType @default(CASH_BOX)
+  currency CurrencyCode    @default(TRY)
+  /// TÜRETİLMİŞ: kasa bakiyesi, transaction içinde güncellenir.
+  balance  Decimal         @default(0) @db.Decimal(18, 4)
+  bankName String?         @db.VarChar(150)
+  iban     String?         @db.VarChar(40)
+  isActive Boolean         @default(true)
+  isDefault Boolean        @default(false)
+
+  createdAt DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime  @updatedAt @db.Timestamptz(6)
+  deletedAt DateTime? @db.Timestamptz(6)
+
+  transactions CashTransaction[]
+
+  @@index([isActive, deletedAt])
+  @@map("cash_accounts")
+}
+
+model CashTransaction {
+  id            String                   @id @default(uuid()) @db.Uuid
+  cashAccountId String                   @db.Uuid
+  direction     CashTransactionDirection
+  amount        Decimal                  @db.Decimal(18, 4)
+  currency      CurrencyCode             @default(TRY)
+  balanceAfter  Decimal                  @db.Decimal(18, 4)
+
+  /// Kaynak ödeme (tahsilat) — varsa 1-1.
+  paymentId String? @unique @db.Uuid
+  /// Kaynak gider — varsa 1-1.
+  expenseId String? @unique @db.Uuid
+
+  description     String?  @db.VarChar(300)
+  transactionDate DateTime @db.Timestamptz(6)
+  createdById     String?  @db.Uuid
+
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @db.Timestamptz(6)
+
+  cashAccount CashAccount @relation(fields: [cashAccountId], references: [id], onDelete: Restrict)
+  payment     Payment?    @relation(fields: [paymentId], references: [id], onDelete: Restrict)
+  expense     Expense?    @relation(fields: [expenseId], references: [id], onDelete: Restrict)
+  createdBy   User?       @relation("CashTxCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([cashAccountId, transactionDate])
+  @@index([transactionDate])
+  @@map("cash_transactions")
+}
+
+model ExpenseCategory {
+  id        String    @id @default(uuid()) @db.Uuid
+  name      String    @unique @db.VarChar(150)
+  slug      String    @unique @db.VarChar(180)
+  isActive  Boolean   @default(true)
+  createdAt DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime  @updatedAt @db.Timestamptz(6)
+  deletedAt DateTime? @db.Timestamptz(6)
+
+  expenses Expense[]
+
+  @@map("expense_categories")
+}
+
+model Expense {
+  id            String        @id @default(uuid()) @db.Uuid
+  expenseNumber String        @unique @db.VarChar(32)
+  categoryId    String        @db.Uuid
+  status        ExpenseStatus @default(PAID)
+
+  currency     CurrencyCode @default(TRY)
+  exchangeRate Decimal      @default(1) @db.Decimal(18, 8)
+  amount       Decimal      @db.Decimal(18, 4)
+  taxRate      Decimal      @default(0) @db.Decimal(6, 3)
+  taxTotal     Decimal      @default(0) @db.Decimal(18, 4)
+
+  title       String    @db.VarChar(250)
+  description String?   @db.Text
+  expenseDate DateTime  @db.Timestamptz(6)
+  documentNo  String?   @db.VarChar(120)
+  createdById String    @db.Uuid
+  cancelledAt DateTime? @db.Timestamptz(6)
+
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @db.Timestamptz(6)
+
+  category        ExpenseCategory  @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  createdBy       User             @relation("ExpenseCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  cashTransaction CashTransaction?
+
+  @@index([categoryId, expenseDate])
+  @@index([expenseDate])
+  @@index([status])
+  @@map("expenses")
+}
+
+// =============================================================================
+// SİSTEM
+// =============================================================================
+
+/// Eşzamanlılık-güvenli belge numarası üreteci. ARCHITECTURE.md §13.3.
+model DocumentCounter {
+  id        String       @id @default(uuid()) @db.Uuid
+  docType   DocumentType
+  /// Numaranın yıllık sıfırlanması için (ör. 2026).
+  period    Int
+  prefix    String       @db.VarChar(12)
+  lastValue Int          @default(0)
+  padding   Int          @default(6)
+  createdAt DateTime     @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime     @updatedAt @db.Timestamptz(6)
+
+  @@unique([docType, period])
+  @@map("document_counters")
+}
+
+model Setting {
+  id          String   @id @default(uuid()) @db.Uuid
+  key         String   @unique @db.VarChar(120)
+  value       String   @db.Text
+  /// string | number | boolean | json — DTO tarafında parse edilir.
+  valueType   String   @default("string") @db.VarChar(20)
+  group       String   @default("general") @db.VarChar(60)
+  description String?  @db.VarChar(300)
+  /// true ise public /settings endpointinde döner (ör. mağaza telefonu).
+  isPublic    Boolean  @default(false)
+  createdAt   DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt   DateTime @updatedAt @db.Timestamptz(6)
+
+  @@index([group])
+  @@index([isPublic])
+  @@map("settings")
+}
+
+model ExchangeRate {
+  id           String       @id @default(uuid()) @db.Uuid
+  baseCurrency CurrencyCode @default(TRY)
+  currency     CurrencyCode
+  rate         Decimal      @db.Decimal(18, 8)
+  rateDate     DateTime     @db.Date
+  source       String?      @db.VarChar(80)
+  createdAt    DateTime     @default(now()) @db.Timestamptz(6)
+  updatedAt    DateTime     @updatedAt @db.Timestamptz(6)
+
+  @@unique([baseCurrency, currency, rateDate])
+  @@index([rateDate])
+  @@map("exchange_rates")
+}
+
+model ContactMessage {
+  id          String               @id @default(uuid()) @db.Uuid
+  fullName    String               @db.VarChar(200)
+  phone       String?              @db.VarChar(30)
+  email       String?              @db.VarChar(255)
+  subject     String               @db.VarChar(250)
+  message     String               @db.Text
+  status      ContactMessageStatus @default(NEW)
+  handledById String?              @db.Uuid
+  ipAddress   String?              @db.VarChar(64)
+  createdAt   DateTime             @default(now()) @db.Timestamptz(6)
+  updatedAt   DateTime             @updatedAt @db.Timestamptz(6)
+  deletedAt   DateTime?            @db.Timestamptz(6)
+
+  handledBy User? @relation("ContactHandledBy", fields: [handledById], references: [id], onDelete: SetNull)
+
+  @@index([status, createdAt])
+  @@map("contact_messages")
+}

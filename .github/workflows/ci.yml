@@ -1,0 +1,336 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: '22'
+  PNPM_VERSION: '9.15.9'
+  TURBO_TELEMETRY_DISABLED: '1'
+  NEXT_TELEMETRY_DISABLED: '1'
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Lint, tip kontrolü, birim test, derleme — veritabanı gerektirmez
+  # ---------------------------------------------------------------------------
+  verify:
+    name: Lint · Typecheck · Test · Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    env:
+      # Env doğrulaması derleme sırasında da çalıştığı için gerekli.
+      DATABASE_URL: postgresql://zirve:zirve@localhost:5432/zirve_ci?schema=public
+      JWT_ACCESS_SECRET: ci-access-secret-en-az-otuz-iki-karakter-uzunlugunda
+      JWT_REFRESH_SECRET: ci-refresh-secret-en-az-otuz-iki-karakter-uzunlugunda
+      JWT_CUSTOMER_ACCESS_SECRET: ci-customer-secret-en-az-otuz-iki-karakter-uzunlugunda
+
+    steps:
+      - name: Depoyu çek
+        uses: actions/checkout@v4
+
+      - name: pnpm kur
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Node.js kur
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Bağımlılıkları kur
+        run: pnpm install --frozen-lockfile
+
+      - name: Prisma client üret
+        run: pnpm prisma:generate
+
+      - name: Biçim kontrolü
+        run: pnpm format:check
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Tip kontrolü
+        run: pnpm typecheck
+
+      - name: Birim testler
+        run: pnpm test
+
+      - name: Derleme
+        run: pnpm build
+
+  # ---------------------------------------------------------------------------
+  # Veritabanı gerektiren adımlar: migration + seed + e2e
+  # ---------------------------------------------------------------------------
+  database:
+    name: Migration · Seed · E2E
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: zirve
+          POSTGRES_PASSWORD: zirve
+          POSTGRES_DB: zirve_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U zirve -d zirve_ci"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql://zirve:zirve@localhost:5432/zirve_ci?schema=public
+      JWT_ACCESS_SECRET: ci-access-secret-en-az-otuz-iki-karakter-uzunlugunda
+      JWT_REFRESH_SECRET: ci-refresh-secret-en-az-otuz-iki-karakter-uzunlugunda
+      JWT_CUSTOMER_ACCESS_SECRET: ci-customer-secret-en-az-otuz-iki-karakter-uzunlugunda
+      NODE_ENV: test
+
+    steps:
+      - name: Depoyu çek
+        uses: actions/checkout@v4
+
+      - name: pnpm kur
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Node.js kur
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Bağımlılıkları kur
+        run: pnpm install --frozen-lockfile
+
+      - name: Paylaşılan paketleri derle
+        run: pnpm --filter @zirve/types build
+
+      - name: Migration uygula
+        run: pnpm prisma:migrate:deploy
+
+      - name: Seed çalıştır
+        run: pnpm prisma:seed
+
+      - name: Şema ile migration senkron mu?
+        # Migration'lar uygulandıktan sonra şemayla veritabanı arasında fark
+        # kalmamalı. Fark varsa biri migration üretmeyi unutmuş demektir.
+        run: |
+          pnpm --filter @zirve/api exec prisma migrate diff \
+            --from-schema-datasource prisma/schema.prisma \
+            --to-schema-datamodel prisma/schema.prisma \
+            --exit-code
+
+      - name: E2E testler (API)
+        # Tarayıcı (Playwright) testleri BU REPODA DEĞİL: vitrin testleri
+        # zirve-tarim-front, panel testleri zirve-tarim-admin reposunda.
+        # İkisi de bu API'nin ayakta olmasını gerektirir.
+        run: pnpm --filter @zirve/api test:e2e
+
+  # ---------------------------------------------------------------------------
+  # ÜRETİM İMAJLARI — yalnız main'de, testler geçtikten SONRA
+  #
+  # NEDEN `needs` ZORUNLU: testlerden bağımsız koşan bir imaj işi, kırık bir
+  # sürümü etiketleyip yayınlanabilir hâle getirir. Sıra nettir: doğrula, sonra
+  # paketle.
+  #
+  # NEDEN PR'DA KOŞMAZ: imaj derlemesi PR geri bildirimini yavaşlatır ve PR'da
+  # üretilen imaj hiçbir yere gitmez. PR'ın sorusu "kod sağlam mı", main'in
+  # sorusu "dağıtılabilir mi".
+  #
+  # İMAJ YAYINLANMAZ, YALNIZ DERLENİR. Kayıt defterine (registry) gönderim
+  # bilinçli olarak kapsam dışı: hedef ortam ve kimlik bilgileri henüz
+  # belirlenmedi. Bu iş "imaj gerçekten derleniyor mu" sorusunu yanıtlar —
+  # dağıtımın ön koşulu bu. Gönderim adımı docs/DEPLOYMENT.md'de yazılı.
+  # ---------------------------------------------------------------------------
+  docker:
+    name: Docker İmajları
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    needs: [verify, database, web-e2e]
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: zirve
+          POSTGRES_PASSWORD: zirve
+          POSTGRES_DB: zirve_smoke
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U zirve"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+
+    steps:
+      - name: Depoyu çek
+        uses: actions/checkout@v4
+
+      - name: Buildx kur
+        uses: docker/setup-buildx-action@v3
+
+      - name: API imajını derle
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/api/Dockerfile
+          # `load: true`: imaj yerel Docker daemon'ına yüklenir, böylece
+          # aşağıdaki duman testi onu `docker run` ile çalıştırabilir.
+          # Sadece derlemek, çalışıp çalışmadığını KANITLAMAZ.
+          load: true
+          tags: zirve-tarim-api:${{ github.sha }}
+          # GitHub Actions önbelleği: katmanlar koşular arasında paylaşılır.
+          # Olmadan her derleme pnpm install'ı sıfırdan çalıştırır.
+          cache-from: type=gha,scope=api
+          cache-to: type=gha,mode=max,scope=api
+
+      # -----------------------------------------------------------------------
+      # DUMAN TESTİ — imajın İÇİNDEN gerçek bir görsel yüklemesi
+      #
+      # NEDEN VAR: Sprint 12'de üç hata yalnızca imajdan çalıştırılınca ortaya
+      # çıktı ve hiçbir test paketi bunları göremedi:
+      #   1. `prisma db seed` üretim imajında `spawn tsx ENOENT` ile düşüyordu
+      #      (tsx bir devDependency) — ilk yönetici hiç oluşturulamıyordu.
+      #   2. Seed host'ta koşturulduğunda görseller volume'e hiç girmiyordu.
+      #   3. Uploads ağacının sahipliği bozulduğunda yükleme EACCES veriyordu.
+      #
+      # Host'ta koşan e2e testleri bunların HİÇBİRİNİ yakalayamaz: orada tsx
+      # kuruludur, dosya sistemi host'un ve uid uyuşmazlığı yoktur. Tek gerçek
+      # kanıt, imajın kendisini üretim ortam değişkenleriyle çalıştırmaktır.
+      # -----------------------------------------------------------------------
+      - name: Duman testi — üretim imajı, migration, seed ve görsel yükleme
+        env:
+          # NODE_ENV=production BİLİNÇLİ: env doğrulamasının üretim kurallarını
+          # (yer tutucu sır, joker CORS, log posta sürücüsü, varsayılan seed
+          # şifresi) da bu adım sınar. Sırlar `openssl` ile üretilir; sabit bir
+          # değer yazmak INSECURE_SECRET_MARKERS'a takılırdı.
+          SMOKE_DB: postgresql://zirve:zirve@localhost:5432/zirve_smoke?schema=public
+        run: |
+          set -euo pipefail
+
+          IMAGE="zirve-tarim-api:${{ github.sha }}"
+          ADMIN_PASS="Smoke-$(openssl rand -hex 8)"
+
+          # Üretim doğrulamasını geçen ortam dosyası.
+          cat > /tmp/smoke.env <<EOF
+          NODE_ENV=production
+          DATABASE_URL=${SMOKE_DB}
+          JWT_ACCESS_SECRET=$(openssl rand -base64 48)
+          JWT_REFRESH_SECRET=$(openssl rand -base64 48)
+          JWT_CUSTOMER_ACCESS_SECRET=$(openssl rand -base64 48)
+          CORS_ORIGINS=http://localhost:3000
+          MAIL_DRIVER=smtp
+          SMTP_HOST=localhost
+          SMTP_PORT=1025
+          MAIL_FROM_ADDRESS=noreply@zirvetarim.local
+          PUBLIC_WEB_URL=http://localhost:3000
+          SWAGGER_ENABLED=false
+          SEED_SUPER_ADMIN_EMAIL=admin@zirvetarim.local
+          SEED_SUPER_ADMIN_PASSWORD=${ADMIN_PASS}
+          SEED_DEMO_DATA=true
+          EOF
+
+          docker volume create smoke-uploads
+
+          # --- 1) Migration ve seed: KONTEYNER İÇİNDE, dokümante edilen komutla
+          echo "::group::Migration ve seed"
+          docker run --rm --network host --env-file /tmp/smoke.env \
+            -v smoke-uploads:/app/apps/api/uploads "$IMAGE" \
+            sh -c 'npx prisma migrate deploy && node prisma/seed.js'
+          echo "::endgroup::"
+
+          # Seed görselleri volume'e YAZMIŞ olmalı.
+          COUNT=$(docker run --rm -v smoke-uploads:/u alpine \
+            sh -c 'ls /u/products/seed 2>/dev/null | wc -l')
+          echo "Seed görseli sayısı: $COUNT"
+          test "$COUNT" -ge 1
+
+          # --- 2) API'yi başlat
+          docker run -d --name smoke-api --network host --env-file /tmp/smoke.env \
+            -v smoke-uploads:/app/apps/api/uploads "$IMAGE"
+
+          for i in $(seq 1 40); do
+            if curl -fsS http://localhost:4000/health >/dev/null 2>&1; then break; fi
+            sleep 3
+          done
+          curl -fsS http://localhost:4000/health >/dev/null \
+            || { docker logs smoke-api; exit 1; }
+
+          # --- 3) Giriş
+          TOKEN=$(curl -fsS -X POST http://localhost:4000/api/v1/auth/login \
+            -H 'Content-Type: application/json' \
+            -d "{\"email\":\"admin@zirvetarim.local\",\"password\":\"${ADMIN_PASS}\"}" \
+            | jq -r '.data.accessToken')
+          test -n "$TOKEN" -a "$TOKEN" != "null"
+
+          PRODUCT_ID=$(curl -fsS http://localhost:4000/api/v1/public/products?limit=1 \
+            | jq -r '.data[0].id')
+          test -n "$PRODUCT_ID" -a "$PRODUCT_ID" != "null"
+
+          # --- 4) GERÇEK görsel yüklemesi — EACCES burada yakalanır
+          echo "::group::Görsel yükleme"
+          UPLOAD=$(curl -fsS -X POST \
+            "http://localhost:4000/api/v1/admin/products/${PRODUCT_ID}/images" \
+            -H "Authorization: Bearer ${TOKEN}" \
+            -F "files=@apps/api/prisma/seed-data/assets/placeholder-product.png;type=image/png") \
+            || { docker logs smoke-api; exit 1; }
+          echo "$UPLOAD" | jq .
+          echo "::endgroup::"
+
+          URL=$(echo "$UPLOAD" | jq -r '.data[-1].url')
+          test -n "$URL" -a "$URL" != "null"
+
+          # --- 5) Yüklenen dosya gerçekten servis ediliyor mu
+          TYPE=$(curl -fsS -o /dev/null -w '%{content_type}' "http://localhost:4000${URL}")
+          echo "Servis edilen tip: $TYPE"
+          case "$TYPE" in image/*) ;; *) docker logs smoke-api; exit 1 ;; esac
+
+          docker rm -f smoke-api
+          docker volume rm smoke-uploads
+
+  # ---------------------------------------------------------------------------
+  # BAĞIMLILIK TARAMASI — bilgilendirme amaçlı, derlemeyi KIRMAZ
+  #
+  # `continue-on-error: true` bilinçlidir: üçüncü taraf bir pakette yayınlanan
+  # yeni bir advisory, bizim yayınımızı anında bloke etmemelidir. Değerlendirme
+  # ve karar docs/SECURITY.md §8'de kayıt altına alınır.
+  # ---------------------------------------------------------------------------
+  audit:
+    name: Bağımlılık Taraması
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    continue-on-error: true
+
+    steps:
+      - name: Depoyu çek
+        uses: actions/checkout@v4
+
+      - name: pnpm kur
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Node.js kur
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Bağımlılıkları kur
+        run: pnpm install --frozen-lockfile
+
+      - name: pnpm audit
+        run: pnpm audit --audit-level high

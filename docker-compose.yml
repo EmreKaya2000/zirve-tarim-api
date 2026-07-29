@@ -1,0 +1,194 @@
+# =============================================================================
+# Zirve Tarım — yerel geliştirme yığını
+#
+#   cp .env.example .env
+#   docker compose up -d --build
+#
+# Servisler:
+#   postgres : http://localhost:5432
+#   api      : http://localhost:4000   (Swagger: /docs, sağlık: /health)
+#   web      : http://localhost:3000
+# =============================================================================
+
+name: zirve-tarim
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: zirve-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-zirve}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-zirve_local_dev_password}
+      POSTGRES_DB: ${POSTGRES_DB:-zirve_tarim}
+      # Türkçe sıralama ve karşılaştırma için.
+      LANG: tr_TR.utf8
+      POSTGRES_INITDB_ARGS: '--encoding=UTF8'
+    ports:
+      - '${POSTGRES_PORT:-5432}:5432'
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-zirve} -d ${POSTGRES_DB:-zirve_tarim}']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    networks:
+      - zirve-network
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    container_name: zirve-api
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      NODE_ENV: ${NODE_ENV:-development}
+      # Konteyner içinden host adı servis adıdır (postgres), localhost DEĞİL.
+      DATABASE_URL: postgresql://${POSTGRES_USER:-zirve}:${POSTGRES_PASSWORD:-zirve_local_dev_password}@postgres:5432/${POSTGRES_DB:-zirve_tarim}?schema=public
+      API_PORT: 4000
+      API_PREFIX: ${API_PREFIX:-api/v1}
+      SWAGGER_PATH: ${SWAGGER_PATH:-docs}
+      SWAGGER_ENABLED: ${SWAGGER_ENABLED:-true}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
+      LOG_LEVEL: ${LOG_LEVEL:-debug}
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:-degistirin-en-az-32-karakter-olmali-dev-only}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-degistirin-en-az-32-karakter-olmali-dev-only-2}
+      JWT_ACCESS_EXPIRES_IN: ${JWT_ACCESS_EXPIRES_IN:-15m}
+      JWT_REFRESH_EXPIRES_IN: ${JWT_REFRESH_EXPIRES_IN:-7d}
+      # Sprint 11 — müşteri (public) kimliği: yönetici sırrından AYRI olmalı.
+      JWT_CUSTOMER_ACCESS_SECRET: ${JWT_CUSTOMER_ACCESS_SECRET:-degistirin-musteri-jetonu-icin-ayri-sir-dev-only}
+      JWT_CUSTOMER_ACCESS_EXPIRES_IN: ${JWT_CUSTOMER_ACCESS_EXPIRES_IN:-30m}
+      JWT_CUSTOMER_REFRESH_EXPIRES_IN: ${JWT_CUSTOMER_REFRESH_EXPIRES_IN:-30d}
+      # Sprint 11 — e-posta. Geliştirmede gönderilmez, loglanır.
+      MAIL_DRIVER: ${MAIL_DRIVER:-log}
+      MAIL_FROM_ADDRESS: ${MAIL_FROM_ADDRESS:-no-reply@zirvetarim.local}
+      MAIL_FROM_NAME: ${MAIL_FROM_NAME:-Zirve Tarım}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_SECURE: ${SMTP_SECURE:-false}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      # Doğrulama/sıfırlama bağlantılarının kök adresi (Host başlığından değil).
+      PUBLIC_WEB_URL: ${PUBLIC_WEB_URL:-http://localhost:3000}
+      THROTTLE_TTL: ${THROTTLE_TTL:-60}
+      THROTTLE_LIMIT: ${THROTTLE_LIMIT:-120}
+      SEED_SUPER_ADMIN_EMAIL: ${SEED_SUPER_ADMIN_EMAIL:-admin@zirvetarim.local}
+      SEED_SUPER_ADMIN_PASSWORD: ${SEED_SUPER_ADMIN_PASSWORD:-ZirveTarim2026}
+      SEED_SUPER_ADMIN_NAME: ${SEED_SUPER_ADMIN_NAME:-Sistem Yöneticisi}
+      # Boş: üretim dışında demo verisi yüklenir, üretimde yüklenmez.
+      SEED_DEMO_DATA: ${SEED_DEMO_DATA:-}
+    ports:
+      - '${API_PORT:-4000}:4000'
+    volumes:
+      # Yüklenen ürün görselleri. Volume olmadan konteyner her yeniden
+      # oluşturulduğunda tüm görseller kaybolur, kayıtlar 404'e düşer.
+      # S3/R2 sürücüsüne geçildiğinde bu bağlama kaldırılacaktır.
+      - api-uploads:/app/apps/api/uploads
+    # Konteyner ayağa kalkarken migration'ları uygular, sonra API'yi başlatır.
+    # Not: Üretimde migration ayrı bir adım olmalıdır (bkz. README).
+    command: >
+      sh -c "npx prisma migrate deploy && node dist/main.js"
+    networks:
+      - zirve-network
+
+  # ---------------------------------------------------------------------------
+  # MAILPIT — geliştirme ve test için posta yakalayıcı (Sprint 12)
+  #
+  # NEDEN GEREKLİ: doğrulama ve şifre sıfırlama jetonları veritabanında YALNIZ
+  # SHA-256 özetiyle saklanır; ham hâlleri sadece e-postanın içindedir. Tarayıcı
+  # testinin (Playwright) o bağlantıyı açabilmesi için postayı OKUMASI gerekir.
+  #
+  # Alternatif, jetonu bir uçtan geri veren "test kapısı" açmaktı — test
+  # kolaylığı için üretime taşınan gerçek bir güvenlik açığı olurdu. Mailpit
+  # gerçek SMTP konuşur ve HTTP API'sinden mesajları verir: üretim kod yolu
+  # aynen kullanılır, hiçbir şey taklit edilmez.
+  #
+  #   SMTP    : 1025 (API bu porta gönderir)
+  #   Arayüz  : http://localhost:8025  (gelen postaları tarayıcıdan okuyun)
+  #
+  # Kullanmak için API'yi SMTP sürücüsüne alın:
+  #   MAIL_DRIVER=smtp SMTP_HOST=mailpit SMTP_PORT=1025 docker compose up -d
+  # ---------------------------------------------------------------------------
+  mailpit:
+    image: axllent/mailpit:latest
+    container_name: zirve-mailpit
+    restart: unless-stopped
+    environment:
+      # Mesajları diskte tutmaz; her yeniden başlatmada temiz kutu.
+      MP_MAX_MESSAGES: 500
+      MP_SMTP_AUTH_ACCEPT_ANY: 1
+      MP_SMTP_AUTH_ALLOW_INSECURE: 1
+    ports:
+      - '${MAILPIT_SMTP_PORT:-1025}:1025'
+      - '${MAILPIT_UI_PORT:-8025}:8025'
+    healthcheck:
+      # Mailpit imajında curl/wget yok; kendi `mailpit` ikilisi sağlık uçlarını
+      # sorgulayabiliyor.
+      test: ['CMD', '/mailpit', 'readyz']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    networks:
+      - zirve-network
+
+  # ---------------------------------------------------------------------------
+  # İLERİDE — henüz kullanılmıyor
+  # ---------------------------------------------------------------------------
+
+  # redis:
+  #   image: redis:7-alpine
+  #   container_name: zirve-redis
+  #   restart: unless-stopped
+  #   command: redis-server --appendonly yes
+  #   ports:
+  #     - '6379:6379'
+  #   volumes:
+  #     - redis-data:/data
+  #   healthcheck:
+  #     test: ['CMD', 'redis-cli', 'ping']
+  #     interval: 10s
+  #     timeout: 5s
+  #     retries: 5
+  #   networks:
+  #     - zirve-network
+
+  # minio:
+  #   image: minio/minio:latest
+  #   container_name: zirve-minio
+  #   restart: unless-stopped
+  #   command: server /data --console-address ":9001"
+  #   environment:
+  #     MINIO_ROOT_USER: ${S3_ACCESS_KEY:-minioadmin}
+  #     MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY:-minioadmin}
+  #   ports:
+  #     - '9000:9000'
+  #     - '9001:9001'
+  #   volumes:
+  #     - minio-data:/data
+  #   healthcheck:
+  #     test: ['CMD', 'mc', 'ready', 'local']
+  #     interval: 10s
+  #     timeout: 5s
+  #     retries: 5
+  #   networks:
+  #     - zirve-network
+
+volumes:
+  postgres-data:
+    driver: local
+  api-uploads:
+    driver: local
+  # redis-data:
+  #   driver: local
+  # minio-data:
+  #   driver: local
+
+networks:
+  zirve-network:
+    driver: bridge

@@ -1,0 +1,60 @@
+# Bağımlılıklar
+node_modules/
+.pnpm-store/
+
+# Derleme çıktıları
+dist/
+build/
+*.tsbuildinfo
+
+# Turborepo
+.turbo/
+
+# Ortam değişkenleri — .env.example DIŞINDA hiçbir .env dosyası commit edilmez
+.env
+.env.*
+!.env.example
+
+# Test
+coverage/
+.nyc_output/
+
+# Prisma
+prisma/*.db
+prisma/*.db-journal
+
+# Seed'in derlenmiş hâli (`prisma:seed:build` üretir, üretim imajı kullanır).
+# Türetilmiş çıktıdır; kaynak `prisma/seed.ts`.
+apps/api/prisma/seed.js
+
+# Yüklenen dosyaların ÇALIŞMA ZAMANI dizini.
+#
+# Yol belirtmek ŞART: yalın `uploads/` deseni HER SEVİYEDEKİ "uploads"
+# klasörünü eşler ve `apps/api/src/modules/uploads/` kaynak modülünü de
+# dışlar — dosyalar sessizce commit edilmez ve derleme CI'da kırılır.
+apps/*/uploads/
+apps/*/storage/
+
+# Log
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+logs/
+
+# İşletim sistemi
+.DS_Store
+Thumbs.db
+
+# Editör
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+*.swp
+*.swo
+
+# Geçici
+tmp/
+temp/

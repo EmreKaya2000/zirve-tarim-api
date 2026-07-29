@@ -1,0 +1,14 @@
+node_modules/
+dist/
+build/
+.next/
+out/
+coverage/
+.turbo/
+pnpm-lock.yaml
+apps/api/prisma/migrations/
+# `prisma:seed:build` çıktısı — türetilmiş paket, kaynağı prisma/seed.ts
+apps/api/prisma/seed.js
+docs/prisma/
+*.min.js
+*.min.css

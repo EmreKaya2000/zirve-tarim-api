@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "display": "Zirve NestJS",
+  "extends": "./base.json",
+  "compilerOptions": {
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "lib": ["ES2023"],
+    "types": ["node", "jest"],
+
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
+    "isolatedModules": false,
+
+    "outDir": "./dist",
+    "baseUrl": "./",
+    "declaration": false,
+    "declarationMap": false,
+
+    "strictBindCallApply": true,
+    "strictPropertyInitialization": false
+  }
+}

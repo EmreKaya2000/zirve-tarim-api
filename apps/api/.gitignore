@@ -1,0 +1,5 @@
+# Yüklenen dosyaların ÇALIŞMA ZAMANI dizini.
+#
+# Başındaki eğik çizgi ŞART: `uploads/` deseni her seviyedeki "uploads"
+# klasörünü eşler ve `src/modules/uploads/` kaynak modülünü de dışlar.
+/uploads/

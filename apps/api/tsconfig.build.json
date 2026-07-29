@@ -1,0 +1,17 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "rootDir": "./src",
+    /*
+     * tsbuildinfo dosyası dist İÇİNDE tutulmalıdır.
+     *
+     * nest-cli.json `deleteOutDir: true` ile her derlemede dist'i siler.
+     * tsbuildinfo dışarıda kalırsa tsc "hiçbir şey değişmemiş" diyerek emit
+     * atlar ve dist BOŞ kalır — build sessizce başarılı görünür ama
+     * `node dist/main.js` MODULE_NOT_FOUND verir. İkisi birlikte silinmeli.
+     */
+    "tsBuildInfoFile": "./dist/.tsbuildinfo"
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": ["node_modules", "dist", "coverage", "test", "prisma", "**/*.spec.ts"]
+}

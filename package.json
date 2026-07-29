@@ -1,0 +1,43 @@
+{
+  "name": "zirve-tarim-api",
+  "version": "0.1.0",
+  "private": true,
+  "description": "ZirveTarım Api — NestJS REST API ve @zirve/types paylaşılan sözleşme paketi",
+  "packageManager": "pnpm@9.15.9",
+  "engines": {
+    "node": ">=20.11.0",
+    "pnpm": ">=9.0.0"
+  },
+  "scripts": {
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "lint": "turbo run lint",
+    "lint:fix": "turbo run lint:fix",
+    "typecheck": "turbo run typecheck",
+    "test": "turbo run test",
+    "test:e2e": "turbo run test:e2e",
+    "clean": "turbo run clean && rm -rf node_modules",
+    "format": "prettier --write \"**/*.{ts,tsx,js,jsx,mjs,cjs,json,md,yml,yaml}\"",
+    "format:check": "prettier --check \"**/*.{ts,tsx,js,jsx,mjs,cjs,json,md,yml,yaml}\"",
+    "prisma:generate": "pnpm --filter @zirve/api prisma:generate",
+    "prisma:migrate": "pnpm --filter @zirve/api prisma:migrate",
+    "prisma:migrate:deploy": "pnpm --filter @zirve/api prisma:migrate:deploy",
+    "prisma:seed": "pnpm --filter @zirve/api prisma:seed",
+    "prisma:studio": "pnpm --filter @zirve/api prisma:studio",
+    "types:build": "pnpm --filter @zirve/types build",
+    "docker:up": "docker compose up -d --build",
+    "docker:down": "docker compose down",
+    "docker:logs": "docker compose logs -f"
+  },
+  "devDependencies": {
+    "@zirve/typescript-config": "workspace:*",
+    "prettier": "^3.4.2",
+    "turbo": "^2.3.3",
+    "typescript": "^5.7.3"
+  },
+  "pnpm": {
+    "overrides": {
+      "sharp": ">=0.35.3"
+    }
+  }
+}
