@@ -161,7 +161,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-    needs: [verify, database, web-e2e]
+    # `web-e2e` BİLEREK YOK: tarayıcı testleri üç depoya bölünürken
+    # zirve-tarim-front ve zirve-tarim-admin depolarına taşındı. Adı burada
+    # kalmıştı; var olmayan bir işe `needs` vermek workflow'u HİÇ
+    # başlatmıyordu — GitHub çalışmayı sıfır işle bitiriyor, o yüzden ortada
+    # hata mesajı da yoktu. API CI'ı bölünmeden beri bir kez koşmamıştı.
+    needs: [verify, database]
 
     services:
       postgres:
