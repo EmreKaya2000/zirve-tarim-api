@@ -1648,14 +1648,25 @@ model SaleItem {
   /// Satır bazında indirim TUTARI (yüzde değil).
   discountAmount Decimal @default(0) @db.Decimal(18, 4)
 
-  /// unitSalePrice * quantity (indirim düşülmemiş).
+  /// Satış anındaki KDV oranı — SNAPSHOT (SPEC §15.16).
+  ///
+  /// KURAL: oran > 0 ise `unitSalePrice` KDV DAHİLDİR ve vergi ters hesapla
+  /// ayrıştırılır; oran 0 ise kalem KDV'sizdir. Ürünün KDV oranı sonradan
+  /// değişse bile geçmiş satış DEĞİŞMEMELİDİR, bu yüzden varyasyondan
+  /// join'lenmez, kopyalanır.
+  taxRate Decimal @default(0) @db.Decimal(6, 3)
+
+  /// unitSalePrice * quantity (indirim düşülmemiş, KDV dahil).
   lineSubtotal Decimal @db.Decimal(18, 4)
   /// lineSubtotal - discountAmount.
   lineTotal    Decimal @db.Decimal(18, 4)
 
   /// HASSAS: unitPurchasePrice * quantity.
   lineCost   Decimal @db.Decimal(18, 4)
-  /// HASSAS: lineTotal - lineCost.
+  /// `lineTotal` içinden ayrışan KDV payı. Oran 0 ise sıfırdır.
+  lineTax    Decimal @default(0) @db.Decimal(18, 4)
+  /// HASSAS: NET kâr — (lineTotal - lineTax) - (lineCost - alışKDV).
+  /// KDV mağazanın parası olmadığı için ciroya yazılmaz.
   lineProfit Decimal @db.Decimal(18, 4)
 
   sortOrder Int      @default(0)

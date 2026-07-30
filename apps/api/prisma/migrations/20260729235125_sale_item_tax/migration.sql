@@ -1,0 +1,3 @@
+-- AlterTable
+ALTER TABLE "sale_items" ADD COLUMN     "lineTax" DECIMAL(18,4) NOT NULL DEFAULT 0,
+ADD COLUMN     "taxRate" DECIMAL(6,3) NOT NULL DEFAULT 0;

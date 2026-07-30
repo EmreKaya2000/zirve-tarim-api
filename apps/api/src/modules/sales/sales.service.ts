@@ -600,6 +600,8 @@ export class SalesService {
         isActive: true,
         deletedAt: true,
         purchasePrice: true,
+        // KDV oranı satış kalemine snapshot olarak kopyalanır.
+        taxRate: true,
         salePrice: true,
         unitType: { select: { name: true, code: true, allowsDecimal: true } },
         product: { select: { id: true, name: true, deletedAt: true } },
@@ -669,6 +671,9 @@ export class SalesService {
         unitSalePrice,
         unitPurchasePrice: new Prisma.Decimal(variant.purchasePrice),
         discountAmount,
+        // KDV oranı SATIŞ ANINDA kopyalanır: ürünün oranı sonradan değişse
+        // bile geçmiş satış değişmemelidir (SPEC §15.15-16).
+        taxRate: new Prisma.Decimal(variant.taxRate),
       });
 
       // İndirim satır ara toplamını aşamaz: aşarsa satır negatif tutara
@@ -775,9 +780,11 @@ interface ResolvedSaleItem {
   unitSalePrice: Prisma.Decimal;
   unitPurchasePrice: Prisma.Decimal;
   discountAmount: Prisma.Decimal;
+  taxRate: Prisma.Decimal;
   lineSubtotal: Prisma.Decimal;
   lineTotal: Prisma.Decimal;
   lineCost: Prisma.Decimal;
+  lineTax: Prisma.Decimal;
   lineProfit: Prisma.Decimal;
 }
 
@@ -793,9 +800,13 @@ function toItemCreateData(item: ResolvedSaleItem): Omit<Prisma.SaleItemCreateMan
     unitPurchasePrice: item.unitPurchasePrice,
     unitSalePrice: item.unitSalePrice,
     discountAmount: item.discountAmount,
+    // KDV oranı ve ayrışan vergi SNAPSHOT olarak yazılır: ürünün oranı
+    // sonradan değişse bile geçmiş satış değişmemelidir (SPEC §15.15-16).
+    taxRate: item.taxRate,
     lineSubtotal: item.lineSubtotal,
     lineTotal: item.lineTotal,
     lineCost: item.lineCost,
+    lineTax: item.lineTax,
     lineProfit: item.lineProfit,
     sortOrder: item.sortOrder,
   };

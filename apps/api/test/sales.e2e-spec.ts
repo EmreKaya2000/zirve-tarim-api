@@ -241,6 +241,112 @@ describe('Satış zinciri (e2e)', () => {
   };
 
   // =========================================================================
+  /**
+   * KDV KURALI (2026-07-30 kararı, şartname §9.1 "KDV bilgisi opsiyonel olabilir"):
+   *
+   *   oran > 0  -> satış fiyatı KDV DAHİLDİR, vergi ters hesapla ayrıştırılır
+   *   oran = 0  -> kalem KDV'sizdir
+   *
+   * Bu bölüm uçtan uca doğrular: oran varyasyondan satış kalemine SNAPSHOT
+   * olarak kopyalanır, `taxTotal` toplanır, `grandTotal` ETKİLENMEZ ve kâr
+   * NET tutar üzerinden hesaplanır.
+   */
+  describe('KDV — girilirse dahil, girilmezse hariç', () => {
+    let taxedVariantId = '';
+
+    beforeAll(async () => {
+      const unit = await prisma.unitType.findFirstOrThrow({ where: { code: 'ad' } });
+
+      const variant = await prisma.productVariant.create({
+        data: {
+          productId,
+          sku: `${PREFIX}-KDV`,
+          unitTypeId: unit.id,
+          unitQuantity: '1',
+          purchasePrice: PURCHASE_PRICE,
+          salePrice: SALE_PRICE,
+          taxRate: '20',
+          minOrderQuantity: '1',
+          quantityStep: '1',
+          stockQuantity: '10000',
+          isActive: true,
+          sortOrder: 2,
+        },
+        select: { id: true },
+      });
+
+      taxedVariantId = variant.id;
+    });
+
+    it('KDV oranı olmayan satışta taxTotal sıfırdır', async () => {
+      const sale = await createSale();
+
+      expect(sale.taxTotal).toBe('0');
+    });
+
+    it('oran girilmiş kalemde KDV ayrışır ama grandTotal DEĞİŞMEZ', async () => {
+      // 10 x 150 = 1500 KDV dahil -> 1500 * 20 / 120 = 250 vergi
+      const sale = await createSale({ items: [{ variantId: taxedVariantId, quantity: '10' }] });
+
+      expect(sale.subtotal).toBe('1500');
+      expect(sale.taxTotal).toBe('250');
+      // Müşterinin ödediği tutar vergiden ETKİLENMEZ: vergi fiyatın içindedir.
+      // Eklenseydi 1750 olurdu ve müşteriden vergi iki kez alınmış olurdu.
+      expect(sale.grandTotal).toBe('1500');
+    });
+
+    it('kâr NET tutar üzerinden hesaplanır — KDV kâra yazılmaz', async () => {
+      // net satış 1250, net maliyet 833.3333 -> kâr 416.6667
+      // Ham fark 500 olurdu: kâr %20 şişerdi.
+      const sale = await createSale({ items: [{ variantId: taxedVariantId, quantity: '10' }] });
+
+      expect(sale.grossProfit).toBe('416.6667');
+      expect(sale.grossProfit).not.toBe('500');
+    });
+
+    it('KDV oranı satış kalemine SNAPSHOT olarak yazılır', async () => {
+      const sale = await createSale({ items: [{ variantId: taxedVariantId, quantity: '10' }] });
+
+      const item = await prisma.saleItem.findFirstOrThrow({
+        where: { saleId: sale.id as string },
+        select: { taxRate: true, lineTax: true },
+      });
+
+      expect(item.taxRate.toString()).toBe('20');
+      expect(item.lineTax.toString()).toBe('250');
+    });
+
+    /**
+     * Kural 15/16: ürünün KDV oranı sonradan değişse bile GEÇMİŞ satış
+     * değişmemelidir. Oran join'lenseydi eski faturaların vergisi bugünün
+     * oranıyla yeniden hesaplanır ve muhasebe kaydı kendiliğinden değişirdi.
+     */
+    it('varyasyonun oranı sonradan değişse eski satış DEĞİŞMEZ', async () => {
+      const sale = await createSale({ items: [{ variantId: taxedVariantId, quantity: '10' }] });
+
+      await prisma.productVariant.update({
+        where: { id: taxedVariantId },
+        data: { taxRate: '1' },
+      });
+
+      const after = await getSale(sale.id as string);
+      const item = await prisma.saleItem.findFirstOrThrow({
+        where: { saleId: sale.id as string },
+        select: { taxRate: true },
+      });
+
+      expect(item.taxRate.toString()).toBe('20');
+      expect(after.taxTotal).toBe('250');
+
+      // Sonraki testleri etkilememesi için geri al.
+      await prisma.productVariant.update({
+        where: { id: taxedVariantId },
+        data: { taxRate: '20' },
+      });
+    });
+  });
+
+  // =========================================================================
   describe('KÂR HESABI', () => {
     it('indirimsiz tek kalem: (150-100) x 10 = 500', async () => {
       const sale = await createSale();

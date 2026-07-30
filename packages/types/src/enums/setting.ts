@@ -47,8 +47,6 @@ export const SETTING_KEYS = {
   GENERAL_CURRENCY: 'general.currency',
   /** Varsayılan KDV oranı (yüzde, string). */
   SALES_DEFAULT_TAX_RATE: 'sales.defaultTaxRate',
-  /** Ürün fiyatları KDV dahil mi? */
-  SALES_TAX_INCLUDED: 'sales.taxIncluded',
   /**
    * Negatif stoğa izin verilsin mi?
    * Varsayılan false — docs/ARCHITECTURE.md §13.4.

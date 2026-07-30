@@ -97,11 +97,144 @@ describe('SaleCalculationService', () => {
     });
   });
 
+  /**
+   * KDV KURALI (2026-07-30 kararı, şartname §9.1):
+   *   oran > 0  -> satış fiyatı KDV DAHİLDİR, vergi ters hesapla ayrıştırılır
+   *   oran = 0  -> kalem KDV'sizdir
+   *
+   * En kritik test "kâr NET tutar üzerinden" olanıdır: ham `lineTotal -
+   * lineCost` kullanılsaydı %20 oranda kâr TAM %20 fazla görünürdü ve finans
+   * modülünün asıl çıktısı yanlış olurdu.
+   */
+  describe('KDV — girilirse dahil, girilmezse hariç', () => {
+    it('oran girilmezse KDV yoktur ve kâr ham farktır', () => {
+      const result = service.calculateItem({
+        quantity: '10',
+        unitSalePrice: '395',
+        unitPurchasePrice: '285',
+      });
+
+      expect(result.taxRate.toString()).toBe('0');
+      expect(result.lineTax.toString()).toBe('0');
+      expect(result.lineProfit.toString()).toBe('1100');
+    });
+
+    it('oran 0 açıkça verilse de KDV yoktur', () => {
+      const result = service.calculateItem({
+        quantity: '1',
+        unitSalePrice: '120',
+        unitPurchasePrice: '60',
+        taxRate: '0',
+      });
+
+      expect(result.lineTax.toString()).toBe('0');
+      expect(result.lineProfit.toString()).toBe('60');
+    });
+
+    it('oran verilirse fiyat KDV DAHİL sayılır ve vergi ters hesapla ayrışır', () => {
+      // 120 TL, %20 dahil -> 120 * 20 / 120 = 20 TL vergi, 100 TL net
+      const result = service.calculateItem({
+        quantity: '1',
+        unitSalePrice: '120',
+        unitPurchasePrice: '60',
+        taxRate: '20',
+      });
+
+      expect(result.lineTotal.toString()).toBe('120');
+      expect(result.lineTax.toString()).toBe('20');
+    });
+
+    it('KÂR NET TUTAR ÜZERİNDEN hesaplanır', () => {
+      // Satış 120 (net 100), alış 60 (net 50) -> net kâr 50.
+      // Ham fark 60 olurdu: %20 oranda kâr tam %20 şişerdi.
+      const result = service.calculateItem({
+        quantity: '1',
+        unitSalePrice: '120',
+        unitPurchasePrice: '60',
+        taxRate: '20',
+      });
+
+      expect(result.lineProfit.toString()).toBe('50');
+      expect(result.lineProfit.toString()).not.toBe('60');
+    });
+
+    it('KDV oranı MÜŞTERİNİN ÖDEDİĞİ tutarı değiştirmez', () => {
+      const withTax = service.calculateItem({
+        quantity: '3',
+        unitSalePrice: '120',
+        unitPurchasePrice: '60',
+        taxRate: '20',
+      });
+      const withoutTax = service.calculateItem({
+        quantity: '3',
+        unitSalePrice: '120',
+        unitPurchasePrice: '60',
+      });
+
+      expect(withTax.lineTotal.toString()).toBe(withoutTax.lineTotal.toString());
+      expect(withTax.lineSubtotal.toString()).toBe(withoutTax.lineSubtotal.toString());
+    });
+
+    it('indirim KDV ayrıştırmasından ÖNCE düşer', () => {
+      // 240 - 40 = 200 üzerinden %20 -> 200 * 20 / 120 = 33.3333
+      const result = service.calculateItem({
+        quantity: '2',
+        unitSalePrice: '120',
+        unitPurchasePrice: '60',
+        discountAmount: '40',
+        taxRate: '20',
+      });
+
+      expect(result.lineTotal.toString()).toBe('200');
+      expect(result.lineTax.toString()).toBe('33.3333');
+    });
+
+    it('negatif oran sıfır sayılır — geçersiz veri negatif vergi üretmez', () => {
+      const result = service.calculateItem({
+        quantity: '1',
+        unitSalePrice: '120',
+        unitPurchasePrice: '60',
+        taxRate: '-20',
+      });
+
+      expect(result.lineTax.toString()).toBe('0');
+    });
+
+    it('ondalık oranda kuruş kaybı olmaz', () => {
+      // %1 dahil: 101 * 1 / 101 = 1
+      const result = service.calculateItem({
+        quantity: '1',
+        unitSalePrice: '101',
+        unitPurchasePrice: '50',
+        taxRate: '1',
+      });
+
+      expect(result.lineTax.toString()).toBe('1');
+    });
+  });
+
   describe('satış toplamları', () => {
     /** İki kalemli, biri indirimli satış — canlı doğrulanan senaryo. */
+    // `lineProfit` ve `lineTax` DAHİL EDİLİR: gerçek satış kalemlerinde ikisi de
+    // NOT NULL kolondur ve `computeTotals` onları toplar. Fixture'da eksik
+    // bırakmak, testin üretimde olmayan bir durumu doğrulaması olurdu.
     const items = [
-      { lineSubtotal: '3950', lineTotal: '3950', lineCost: '2850', discountAmount: '0' },
-      { lineSubtotal: '1975', lineTotal: '1875', lineCost: '1425', discountAmount: '100' },
+      {
+        lineSubtotal: '3950',
+        lineTotal: '3950',
+        lineCost: '2850',
+        discountAmount: '0',
+        lineTax: '0',
+        lineProfit: '1100',
+      },
+      {
+        lineSubtotal: '1975',
+        lineTotal: '1875',
+        lineCost: '1425',
+        discountAmount: '100',
+        lineTax: '0',
+        lineProfit: '450',
+      },
     ];
 
     it('çok kalemli satışta tüm toplamlar doğru', () => {
@@ -116,10 +249,40 @@ describe('SaleCalculationService', () => {
       expect(totals.remainingTotal.toString()).toBe('5825');
     });
 
-    it("KDV MVP'de daima sıfırdır", () => {
+    it('KDV oranı girilmemiş kalemlerde taxTotal sıfırdır', () => {
       const totals = service.computeTotals({ items, additionalCosts: [], paidTotal: '0' });
 
       expect(totals.taxTotal.toString()).toBe('0');
+    });
+
+    it('taxTotal kalemlerden ayrışan KDV paylarının toplamıdır', () => {
+      const totals = service.computeTotals({
+        items: [
+          { ...(items[0] as object), lineTax: '658.3333' },
+          { ...(items[1] as object), lineTax: '312.5' },
+        ] as typeof items,
+        additionalCosts: [],
+        paidTotal: '0',
+      });
+
+      expect(totals.taxTotal.toString()).toBe('970.8333');
+    });
+
+    it('taxTotal grandTotal a EKLENMEZ — fiyat KDV dahil', () => {
+      const withTax = service.computeTotals({
+        items: [{ ...(items[0] as object), lineTax: '658.3333' }] as typeof items,
+        additionalCosts: [],
+        paidTotal: '0',
+      });
+      const withoutTax = service.computeTotals({
+        items: [items[0] as (typeof items)[number]],
+        additionalCosts: [],
+        paidTotal: '0',
+      });
+
+      // Müşterinin ödediği tutar KDV oranından ETKİLENMEZ; vergi zaten
+      // fiyatın içindedir. Eklenseydi vergi iki kez alınmış olurdu.
+      expect(withTax.grandTotal.toString()).toBe(withoutTax.grandTotal.toString());
     });
 
     it('netProfit = grossProfit - ek maliyetler', () => {

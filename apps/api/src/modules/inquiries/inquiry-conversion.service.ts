@@ -323,6 +323,8 @@ export class InquiryConversionService {
         isActive: true,
         deletedAt: true,
         purchasePrice: true,
+        // KDV oranı satış kalemine snapshot olarak kopyalanır.
+        taxRate: true,
         salePrice: true,
         unitType: { select: { name: true, code: true, allowsDecimal: true } },
         product: { select: { id: true, name: true, deletedAt: true } },
@@ -370,6 +372,9 @@ export class InquiryConversionService {
         unitSalePrice: item.unitSalePrice ?? new Prisma.Decimal(variant.salePrice),
         unitPurchasePrice: new Prisma.Decimal(variant.purchasePrice),
         discountAmount: item.discountAmount ?? '0',
+        // KDV oranı SATIŞ ANINDA kopyalanır: ürünün oranı sonradan değişse
+        // bile geçmiş satış değişmemelidir (SPEC §15.15-16).
+        taxRate: new Prisma.Decimal(variant.taxRate),
       });
 
       if (calculated.discountAmount.greaterThan(calculated.lineSubtotal)) {
@@ -391,9 +396,13 @@ export class InquiryConversionService {
         unitPurchasePrice: calculated.unitPurchasePrice,
         unitSalePrice: calculated.unitSalePrice,
         discountAmount: calculated.discountAmount,
+        // KDV SNAPSHOT — ürünün oranı sonradan değişse bile geçmiş satış
+        // değişmemelidir (SPEC §15.15-16).
+        taxRate: calculated.taxRate,
         lineSubtotal: calculated.lineSubtotal,
         lineTotal: calculated.lineTotal,
         lineCost: calculated.lineCost,
+        lineTax: calculated.lineTax,
         lineProfit: calculated.lineProfit,
         sortOrder: index,
       });

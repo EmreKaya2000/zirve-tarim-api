@@ -202,16 +202,7 @@ const DEFAULT_SETTINGS: SeedSetting[] = [
     valueType: 'number',
     group: 'sales',
     description:
-      'Yeni ürünler için varsayılan KDV oranı (yüzde). Kural 12 gereği kodda sabit yazılmaz.',
-    isPublic: false,
-  },
-  {
-    key: 'sales.taxIncluded',
-    value: 'true',
-    valueType: 'boolean',
-    group: 'sales',
-    description:
-      'Ürün fiyatları KDV dahil mi? VARSAYIM V-03 — şartname bu noktada sessiz (§9.1 KDVyi opsiyonel bırakıyor), karar hâlâ yazılı onay bekliyor. Üretimde satış kaydı oluştuktan sonra DEĞİŞTİRİLMEMELİ: geçmiş tutarlar tutarsız kalır (docs/ARCHITECTURE.md R-13).',
+      "Yeni varyasyonlar için varsayılan KDV oranı (yüzde). KURAL: oran > 0 ise satış fiyatı KDV DAHİL sayılır ve vergi ters hesapla ayrıştırılır; oran 0 ise kalem KDV'sizdir. Kural 12 gereği kodda sabit yazılmaz.",
     isPublic: false,
   },
 
