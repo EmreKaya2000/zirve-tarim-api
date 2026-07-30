@@ -140,8 +140,9 @@ public olduğunu bilemez ve yanlış bir varsayım testi sessizce boşa düşür
 
 ## 8. Bağımlılık taraması — `pnpm audit`
 
-Denetim anında **6 zafiyet** (5 high, 1 moderate). Biri düzeltildi, dördü
-gerekçesiyle kabul edildi.
+Denetim anında **6 zafiyet** (5 high, 1 moderate). Bugün bu depoda
+`pnpm audit --audit-level high` **temiz**: `sharp`, `js-yaml` ve
+`brace-expansion` düzeltildi; `postcss` zinciri yalnız arayüz depolarında.
 
 ### Düzeltilen
 
@@ -161,16 +162,64 @@ geçmedi. Override sonrası **doğrulandı**: `next build` başarılı ve
 
 ### Kabul edilenler
 
-| Paket                    | Şiddet             | Nerede                            | Neden kabul edildi                                                                                                                                                                                                                                             |
-| ------------------------ | ------------------ | --------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `postcss` ≤8.5.17        | HIGH ×2 + MODERATE | `next` içinde gömülü              | **Derleme zamanı.** Uygulama kullanıcı CSS'i işlemiyor; `sourceMappingURL` saldırısı için saldırganın derleme girdisine erişmesi gerekir. Kendi `postcss` bağımlılığımız güncel; savunmasız kopya Next'in içinde ve Next sürümü yükseltilmeden değiştirilemez. |
-| `js-yaml` 5.2.1          | HIGH               | `@nestjs/swagger`                 | Zafiyet **YAML ayrıştırmada**; Swagger yalnız YAML **üretir**, güvenilmeyen YAML okumaz. Üretimde Swagger zaten kapalı.                                                                                                                                        |
-| `brace-expansion` ≤5.0.7 | HIGH               | `@nestjs/cli` → webpack eklentisi | **Yalnız devDependency.** Üretim imajında yok: `pnpm deploy --prod` ağacı geliştirme bağımlılıklarını içermez.                                                                                                                                                 |
+| Paket             | Şiddet             | Nerede               | Neden kabul edildi                                                                                                                                                                                                                                             |
+| ----------------- | ------------------ | -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `postcss` ≤8.5.17 | HIGH ×2 + MODERATE | `next` içinde gömülü | **Derleme zamanı.** Uygulama kullanıcı CSS'i işlemiyor; `sourceMappingURL` saldırısı için saldırganın derleme girdisine erişmesi gerekir. Kendi `postcss` bağımlılığımız güncel; savunmasız kopya Next'in içinde ve Next sürümü yükseltilmeden değiştirilemez. |
+
+`postcss` yalnız vitrin ve panel depolarında; bu depoda Next yok.
+
+### Sonradan düzeltilenler — CI ilk kez koştuğunda
+
+> Denetim sırasında bu ikisi "kabul edildi" olarak işaretlenmişti. API CI'ı
+> var olmayan bir işe verilen `needs` yüzünden **hiç başlamıyordu**; düzeltilip
+> `Bağımlılık Taraması` ilk kez koşunca ikisi de derlemeyi kırdı ve kabul
+> yerine gerçekten düzeltildiler.
+
+| Paket                                 | Eylem                                               |
+| ------------------------------------- | --------------------------------------------------- |
+| `js-yaml` 5.2.1 → **5.2.2**           | `pnpm.overrides` → `"js-yaml@5": "^5.2.2"`          |
+| `brace-expansion` 1.1.17 → **1.1.18** | `pnpm.overrides` → `"brace-expansion@1": "^1.1.18"` |
+
+**`brace-expansion`'da dikkat edilmesi gereken tuzak.** Advisory "yamalı
+sürüm ≥5.0.8" diyor, ama **5.x çağrılabilir bir fonksiyon dışa aktarmıyor**:
+
+```js
+require('brace-expansion'); // v1 → function
+require('brace-expansion'); // v5 → { expand, EXPANSION_MAX, ... }
+```
+
+`minimatch@3` (ki `@nestjs/cli` üzerinden ağaçta) sonucu doğrudan çağırır:
+`return expand(pattern)`. Bu yüzden düz bir `"brace-expansion": ">=5.0.8"`
+override'ı **çalışma zamanında `TypeError: expand is not a function`** verir.
+Aynı tuzak `">=1.1.18"` yazılınca da kurulur — o aralık 5.x'i de karşılar ve
+pnpm en yüksek sürüme çıkar. Bu yüzden override sürüm hattına sabitlenmiştir
+(`^1.1.18`), ve ikinci bir override 5.x kopyalarını da yamalı tutar.
+
+`1.1.18` geri taşınmış yamayı **içerir** (`EXPANSION_MAX_LENGTH`, aynı
+CVE-2026-14257'ye atıf) ve doğrulandı: zincirlenmiş brace girdisi sınırlanıp
+145 ms'de bitiyor, bellek düz kalıyor.
+
+Advisory'nin sürüm aralığı (`<=5.0.7`) semver'e göre **tüm 1.x sürümlerini**
+kapsar, yani yamalı `1.1.18` de kapsanır. 1.x hattında audit'i susturacak bir
+sürüm yok. Bu yüzden advisory gerekçesiyle muaf tutulur:
+
+```json
+"auditConfig": { "ignoreGhsas": ["GHSA-mh99-v99m-4gvg"] }
+```
+
+Muafiyet **güvenli**, çünkü iki override birlikte ağaçtaki her kopyayı yamalı
+sürümde tutar: 1.x hattı `^1.1.18`, 5.x hattı `>=5.0.8`. Savunmasız bir sürüm
+ağaca giremediği için muafiyetin bir şeyi gizleme ihtimali yok.
 
 **Yeniden değerlendirme koşulu:** Next.js bir üst sürüme çıkarıldığında
-`postcss` zinciri; `@nestjs/swagger` güncellendiğinde `js-yaml`. `pnpm audit`
-CI'da **bilgilendirme amaçlı** koşar ve derlemeyi kırmaz — kırsaydı, üçüncü
-taraf bir paketin yeni bir advisory'si bizim yayınımızı bloke ederdi.
+`postcss` zinciri. `@nestjs/cli` `minimatch`'i 9+ sürümüne taşıdığında
+`brace-expansion` 1.x ağaçtan düşer ve muafiyet kaldırılmalıdır.
+
+**`pnpm audit --audit-level high` CI'da DERLEMEYİ KIRAR.** (Bu bölüm önceden
+"bilgilendirme amaçlı koşar, kırmaz" diyordu; workflow'da `continue-on-error`
+yok, yani doküman gerçeği yanlış anlatıyordu. CI hiç koşmadığı için fark
+edilmemişti.) Kırması bilinçli: her yeni advisory ya düzeltilmeli ya da
+yukarıdaki gibi **yazılı gerekçeyle** muaf tutulmalı; sessizce birikmemeli.
 
 ---
 
