@@ -121,10 +121,31 @@ pnpm dev
 | `pnpm prisma:studio`  | Veritabanını tarayıcıda gezer                |
 | `pnpm types:build`    | `@zirve/types` paketini derler               |
 | `pnpm docker:up`      | Tüm servisleri kaldırır                      |
+| `pnpm e2e:api`        | API'yi TARAYICI TESTLERİ kipinde kaldırır    |
 
 Tarayıcı (Playwright) testleri **bu depoda değil**: vitrin testleri
 `zirve-tarim-front`, panel testleri `zirve-tarim-admin` deposunda. İkisi de bu
 API'nin ayakta olmasını gerektirir.
+
+### Tarayıcı testleri için API'yi `pnpm e2e:api` ile kaldırın
+
+Normal geliştirme ayarıyla kalkan API'de o testlerin bir kısmı **kesinlikle
+kırılır ve hata koda değil ortama aittir**:
+
+| Ayar          | Normal | Neden testi kırar                                                                      |
+| ------------- | ------ | -------------------------------------------------------------------------------------- |
+| Hız sınırı    | açık   | Giriş ucu 5 istek/dk. Paket tek IP'den onlarca giriş yapar → `429 RATE_LIMIT_EXCEEDED` |
+| `MAIL_DRIVER` | `log`  | Müşteri zinciri testleri Mailpit kutusunu okur; posta gönderilmezse bağlantı yok       |
+
+```bash
+pnpm e2e:api     # NODE_ENV=test + Mailpit'e gerçek SMTP
+# ... vitrin/panel deposunda pnpm test:e2e ...
+pnpm docker:up   # normal geliştirme kipine dön
+```
+
+CI bu ayarı zaten kullanır, o yüzden sorun **yalnız yerelde** görünürdü.
+`CORS_ORIGINS` ayrıca `127.0.0.1:3100` ve `:3101` kökenlerini içermelidir —
+Playwright standalone sunucuyu o portlarda kaldırır; `.env.example` içerir.
 
 ## `@zirve/types` — sözleşme paketi
 

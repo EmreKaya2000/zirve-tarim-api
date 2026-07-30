@@ -26,6 +26,7 @@
     "prisma:studio": "pnpm --filter @zirve/api prisma:studio",
     "types:build": "pnpm --filter @zirve/types build",
     "docker:up": "docker compose up -d --build",
+    "e2e:api": "docker compose -f docker-compose.yml -f docker-compose.e2e.yml up -d",
     "docker:down": "docker compose down",
     "docker:logs": "docker compose logs -f",
     "stack:up": "docker compose -f docker-compose.yml -f docker-compose.stack.yml up -d --build",

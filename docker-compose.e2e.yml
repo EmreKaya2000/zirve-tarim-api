@@ -1,0 +1,38 @@
+# =============================================================================
+# TARAYICI (PLAYWRIGHT) TESTLERİ İÇİN API KATMANI
+# =============================================================================
+#
+# Vitrin ve panel depolarındaki `pnpm test:e2e`, GERÇEK bir API'ye konuşur.
+# Normal geliştirme ayarıyla kalkan API'de o testlerin bir kısmı KESİNLİKLE
+# kırılır ve hata koda değil ortama aittir:
+#
+#   1) HIZ SINIRI. Giriş ucu 5 istek/dakika ile sınırlı. Paket tek IP'den
+#      onlarca giriş/kayıt yapar; testler birbirini düşürür ve API
+#      `429 RATE_LIMIT_EXCEEDED` döner. Sınır `NODE_ENV=test` iken kapanır
+#      (apps/api/src/app.module.ts -> `skipIf: () => config.isTest`) ve
+#      `@Throttle` dekoratörüyle sabit olduğu için başka türlü gevşetilemez.
+#
+#   2) E-POSTA. `MAIL_DRIVER=log` yalnız loglar, posta göndermez. Müşteri
+#      zinciri testleri (e-posta doğrulama, şifre sıfırlama) Mailpit'in
+#      kutusunu OKUR; posta gerçekten gönderilmezse bağlantıyı bulamazlar.
+#
+# CI bu ayarı zaten kullanır (kendi API'sini böyle kaldırır), o yüzden sorun
+# yalnız YERELDE görünür. Bu dosya aynı ayarı yerelde tek komuta indirir:
+#
+#   pnpm e2e:api          # API'yi test kipinde kaldırır
+#   pnpm docker:up        # normal geliştirme kipine geri döner
+#
+# CORS kökenleri ayrıca gerekir: Playwright standalone sunucuyu 127.0.0.1:3100
+# (vitrin) ve :3101 (panel) portlarında kaldırır. Bu kökenler `.env.example`
+# içindeki CORS_ORIGINS listesinde hazır gelir.
+#
+# ÜRETİMDE KULLANILMAZ: hız sınırını kapatmak bir güvenlik denetimini
+# devre dışı bırakır.
+
+services:
+  api:
+    environment:
+      NODE_ENV: test
+      MAIL_DRIVER: smtp
+      SMTP_HOST: mailpit
+      SMTP_PORT: 1025
