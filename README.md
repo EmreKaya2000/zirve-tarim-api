@@ -32,6 +32,20 @@ Sonra bu depodan tek komut:
 
 ```bash
 cd zirve-tarim-api
+./scripts/kurulum.sh
+```
+
+Betik ön koşulları denetler (docker çalışıyor mu, portlar boş mu), kardeş
+depoları klonlar, `.env` dosyasını hazırlar, beş servisi derleyip başlatır,
+API sağlıklı olana kadar bekler ve veritabanını doldurur.
+
+**Node ya da pnpm gerektirmez** — her şey konteynerde derlenir. **Tekrar
+çalıştırılabilir**: var olan `.env` dosyasına dokunmaz, klonlu depoları
+güncellemez (yerel değişikliğiniz durur) ve seed idempotenttir.
+
+Elle yapmayı tercih ederseniz:
+
+```bash
 cp .env.example .env
 pnpm stack:up          # postgres + mailpit + api + front + admin
 docker compose exec api node prisma/seed.js
@@ -108,20 +122,21 @@ pnpm dev
 
 ## Komutlar
 
-| Komut                 | Açıklama                                     |
-| --------------------- | -------------------------------------------- |
-| `pnpm dev`            | API'yi izleme modunda başlatır               |
-| `pnpm build`          | Derler                                       |
-| `pnpm lint`           | ESLint — uyarı bile hata sayılır             |
-| `pnpm typecheck`      | `tsc --noEmit`                               |
-| `pnpm test`           | Birim testler (155)                          |
-| `pnpm test:e2e`       | Uçtan uca testler (399) — test veritabanında |
-| `pnpm prisma:migrate` | Migration uygular                            |
-| `pnpm prisma:seed`    | Seed verisini yükler                         |
-| `pnpm prisma:studio`  | Veritabanını tarayıcıda gezer                |
-| `pnpm types:build`    | `@zirve/types` paketini derler               |
-| `pnpm docker:up`      | Tüm servisleri kaldırır                      |
-| `pnpm e2e:api`        | API'yi TARAYICI TESTLERİ kipinde kaldırır    |
+| Komut                  | Açıklama                                     |
+| ---------------------- | -------------------------------------------- |
+| `pnpm dev`             | API'yi izleme modunda başlatır               |
+| `pnpm build`           | Derler                                       |
+| `pnpm lint`            | ESLint — uyarı bile hata sayılır             |
+| `pnpm typecheck`       | `tsc --noEmit`                               |
+| `pnpm test`            | Birim testler (155)                          |
+| `pnpm test:e2e`        | Uçtan uca testler (399) — test veritabanında |
+| `pnpm prisma:migrate`  | Migration uygular                            |
+| `pnpm prisma:seed`     | Seed verisini yükler                         |
+| `pnpm prisma:studio`   | Veritabanını tarayıcıda gezer                |
+| `pnpm types:build`     | `@zirve/types` paketini derler               |
+| `pnpm docker:up`       | Tüm servisleri kaldırır                      |
+| `pnpm e2e:api`         | API'yi TARAYICI TESTLERİ kipinde kaldırır    |
+| `./scripts/kurulum.sh` | Sıfırdan kurulum (yeni bilgisayar)           |
 
 Tarayıcı (Playwright) testleri **bu depoda değil**: vitrin testleri
 `zirve-tarim-front`, panel testleri `zirve-tarim-admin` deposunda. İkisi de bu
