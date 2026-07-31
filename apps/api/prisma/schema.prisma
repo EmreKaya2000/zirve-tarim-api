@@ -111,7 +111,7 @@ enum AuditAction {
 model User {
   id String @id @default(uuid()) @db.Uuid
 
-  email        String  @unique @db.VarChar(255)
+  email        String  @db.VarChar(255)
   /// Argon2id hash. Ham şifre hiçbir yerde saklanmaz veya loglanmaz.
   passwordHash String  @db.VarChar(255)
   fullName     String  @db.VarChar(150)
@@ -318,7 +318,7 @@ model Category {
   parentId String? @db.Uuid
 
   name        String  @db.VarChar(150)
-  slug        String  @unique @db.VarChar(180)
+  slug        String  @db.VarChar(180)
   description String? @db.Text
   imageUrl    String? @db.VarChar(500)
   /// Lucide ikon adı. Örn. "sprout"
@@ -349,7 +349,7 @@ model Brand {
   id String @id @default(uuid()) @db.Uuid
 
   name        String  @db.VarChar(150)
-  slug        String  @unique @db.VarChar(180)
+  slug        String  @db.VarChar(180)
   description String? @db.Text
   logoUrl     String? @db.VarChar(500)
   websiteUrl  String? @db.VarChar(500)
@@ -373,7 +373,7 @@ model Plant {
   id String @id @default(uuid()) @db.Uuid
 
   name        String  @db.VarChar(120)
-  slug        String  @unique @db.VarChar(150)
+  slug        String  @db.VarChar(150)
   /// Latince adı. Ziraat mühendisleri için anlamlı.
   latinName   String? @db.VarChar(150)
   description String? @db.Text
@@ -396,7 +396,7 @@ model SoilType {
   id String @id @default(uuid()) @db.Uuid
 
   name        String  @db.VarChar(120)
-  slug        String  @unique @db.VarChar(150)
+  slug        String  @db.VarChar(150)
   description String? @db.Text
   /// Tipik pH aralığı açıklaması. Örn. "6.5 - 7.5"
   phRange     String? @db.VarChar(40)
@@ -418,7 +418,7 @@ model Benefit {
   id String @id @default(uuid()) @db.Uuid
 
   name        String  @db.VarChar(150)
-  slug        String  @unique @db.VarChar(180)
+  slug        String  @db.VarChar(180)
   description String? @db.Text
   /// Lucide ikon adı.
   icon        String? @db.VarChar(60)
@@ -440,7 +440,7 @@ model SideEffect {
   id String @id @default(uuid()) @db.Uuid
 
   name        String             @db.VarChar(150)
-  slug        String             @unique @db.VarChar(180)
+  slug        String             @db.VarChar(180)
   description String?            @db.Text
   severity    SideEffectSeverity @default(LOW)
   /// Alınması gereken önlem. Ürün detayında uyarı olarak gösterilir.
@@ -464,7 +464,7 @@ model UsagePeriod {
   id String @id @default(uuid()) @db.Uuid
 
   name        String  @db.VarChar(120)
-  slug        String  @unique @db.VarChar(150)
+  slug        String  @db.VarChar(150)
   description String? @db.Text
 
   /// Takvimsel sıra: dönemler doğal sırasıyla listelenmeli.
@@ -489,11 +489,11 @@ model UnitType {
   id String @id @default(uuid()) @db.Uuid
 
   name        String  @db.VarChar(60)
-  slug        String  @unique @db.VarChar(80)
+  slug        String  @db.VarChar(80)
   description String? @db.Text
 
   /// Kısa gösterim. Örn. "kg", "lt", "ad"
-  code String @unique @db.VarChar(16)
+  code String @db.VarChar(16)
 
   measurementType MeasurementType @default(COUNT)
 
@@ -564,7 +564,7 @@ model Product {
   id String @id @default(uuid()) @db.Uuid
 
   name             String  @db.VarChar(220)
-  slug             String  @unique @db.VarChar(250)
+  slug             String  @db.VarChar(250)
   shortDescription String? @db.VarChar(500)
   description      String? @db.Text
 
@@ -724,7 +724,7 @@ model ProductVariant {
   unitTypeId String @db.Uuid
 
   /// Stok kodu. TÜM ürünler arasında benzersizdir.
-  sku  String  @unique @db.VarChar(64)
+  sku  String  @db.VarChar(64)
   /// Varyasyon adı. Örn. "5 kg Çuval". Boşsa birim ve miktardan üretilir.
   name String? @db.VarChar(150)
 
@@ -1282,7 +1282,7 @@ model CustomerAccount {
   customerId String? @unique @db.Uuid
 
   /// Küçük harfe normalleştirilmiş biçimde saklanır (giriş anahtarı).
-  email String @unique @db.VarChar(255)
+  email String @db.VarChar(255)
 
   /// 10 haneli normalleştirilmiş biçim (5321234567), `customers.phone` ile aynı.
   ///
@@ -1357,10 +1357,10 @@ model CustomerRefreshToken {
   userAgent String? @db.VarChar(255)
   ipAddress String? @db.VarChar(64)
 
-  expiresAt DateTime  @db.Timestamptz(6)
-  revokedAt DateTime? @db.Timestamptz(6)
+  expiresAt     DateTime  @db.Timestamptz(6)
+  revokedAt     DateTime? @db.Timestamptz(6)
   /// ROTATED | LOGOUT | REUSE_DETECTED | ACCOUNT_DEACTIVATED | PASSWORD_CHANGED
-  revokedReason String? @db.VarChar(40)
+  revokedReason String?   @db.VarChar(40)
 
   createdAt DateTime @default(now()) @db.Timestamptz(6)
   updatedAt DateTime @updatedAt @db.Timestamptz(6)

@@ -137,7 +137,11 @@ export class CustomerAuthService {
     // delete edilmiş bir satır adresi hâlâ tutar. Bulunursa yeni kayıt
     // denemesi sessizce "zaten var" yoluna girer ve kullanıcı hesabını geri
     // almak için destekle iletişime geçer — sessiz bir UNIQUE hatası yerine.
-    const existing = await this.prisma.customerAccount.findUnique({
+    // findFirst: `email` artik PARTIAL unique (WHERE deletedAt IS NULL), yani
+    // Prisma tarafinda tekil bir anahtar degil. deletedAt FILTRESI BILEREK
+    // YOK: silinmis hesabin e-postasi DB'de serbest olsa da kayit akisi onu
+    // "zaten var" sayip kullaniciyi destege yonlendirir (yukaridaki gerekce).
+    const existing = await this.prisma.customerAccount.findFirst({
       where: { email },
       select: { id: true, firstName: true, email: true, deletedAt: true },
     });
@@ -479,7 +483,7 @@ export class CustomerAuthService {
     // an adres boştu ama bağlantı açılana kadar başkası o adresle kayıt olmuş
     // olabilir. Kontrol edilmezse transaction UNIQUE hatasıyla 500'e düşerdi.
     if (isEmailChange) {
-      const taken = await this.prisma.customerAccount.findUnique({
+      const taken = await this.prisma.customerAccount.findFirst({
         where: { email: stored.email },
         select: { id: true },
       });
@@ -724,7 +728,7 @@ export class CustomerAuthService {
     // Kayıt ucundaki enumeration riski burada yoktur — girişli bir hesap
     // başına saatte birkaç deneme ile liste taranamaz (rate limit).
     if (isEmailChange) {
-      const taken = await this.prisma.customerAccount.findUnique({
+      const taken = await this.prisma.customerAccount.findFirst({
         where: { email: nextEmail },
         select: { id: true },
       });

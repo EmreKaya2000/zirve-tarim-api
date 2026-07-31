@@ -392,7 +392,9 @@ describe('Auth (e2e)', () => {
     it('kullanıcı PASİFE ALINDIĞINDA mevcut jeton geçersizleşir', async () => {
       const session = await loginAs(ACTIVE_ADMIN);
 
-      await prisma.user.update({
+      // updateMany: `email` artik PARTIAL unique (WHERE deletedAt IS NULL),
+      // yani Prisma'nin tekil anahtari degil.
+      await prisma.user.updateMany({
         where: { email: ACTIVE_ADMIN.email },
         data: { isActive: false },
       });
@@ -404,7 +406,7 @@ describe('Auth (e2e)', () => {
       expect(response.status).toBe(HttpStatus.UNAUTHORIZED);
       expect(response.body.error.code).toBe('ACCOUNT_INACTIVE');
 
-      await prisma.user.update({
+      await prisma.user.updateMany({
         where: { email: ACTIVE_ADMIN.email },
         data: { isActive: true },
       });
@@ -523,7 +525,7 @@ describe('Auth (e2e)', () => {
 
       expect(refreshAttempt.status).toBe(HttpStatus.UNAUTHORIZED);
 
-      await prisma.user.update({
+      await prisma.user.updateMany({
         where: { email: ACTIVE_ADMIN.email },
         data: { isActive: true },
       });

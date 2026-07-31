@@ -349,7 +349,7 @@ describe('Müşteri hesabı (e2e)', () => {
       expect(response.body.data.accessToken).toBeUndefined();
       expect(response.body.data.refreshToken).toBeUndefined();
 
-      const account = await prisma.customerAccount.findUnique({ where: { email } });
+      const account = await prisma.customerAccount.findFirst({ where: { email } });
 
       expect(account).not.toBeNull();
       expect(account?.emailVerifiedAt).toBeNull();
@@ -380,7 +380,7 @@ describe('Müşteri hesabı (e2e)', () => {
       expect(count).toBe(1);
 
       // Ad değişmemiş: ikinci istek mevcut hesaba DOKUNMAZ.
-      const account = await prisma.customerAccount.findUnique({ where: { email } });
+      const account = await prisma.customerAccount.findFirst({ where: { email } });
 
       expect(account?.firstName).toBe('Ahmet');
 
@@ -428,7 +428,7 @@ describe('Müşteri hesabı (e2e)', () => {
 
       await api().post('/api/v1/customer-auth/register').send(registerBody(email.toUpperCase()));
 
-      const account = await prisma.customerAccount.findUnique({
+      const account = await prisma.customerAccount.findFirst({
         where: { email: email.toLowerCase() },
       });
 
@@ -1731,7 +1731,7 @@ describe('Müşteri hesabı (e2e)', () => {
       await api().post('/api/v1/customer-auth/register').send(registerBody(email));
       await verifyEmailOf();
 
-      const account = await prisma.customerAccount.findUnique({ where: { email } });
+      const account = await prisma.customerAccount.findFirst({ where: { email } });
 
       const log = await prisma.auditLog.findFirst({
         where: { action: 'EMAIL_VERIFIED', entityId: (account as { id: string }).id },

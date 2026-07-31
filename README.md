@@ -128,8 +128,8 @@ pnpm dev
 | `pnpm build`           | Derler                                       |
 | `pnpm lint`            | ESLint — uyarı bile hata sayılır             |
 | `pnpm typecheck`       | `tsc --noEmit`                               |
-| `pnpm test`            | Birim testler (155)                          |
-| `pnpm test:e2e`        | Uçtan uca testler (399) — test veritabanında |
+| `pnpm test`            | Birim testler (165)                          |
+| `pnpm test:e2e`        | Uçtan uca testler (408) — test veritabanında |
 | `pnpm prisma:migrate`  | Migration uygular                            |
 | `pnpm prisma:seed`     | Seed verisini yükler                         |
 | `pnpm prisma:studio`   | Veritabanını tarayıcıda gezer                |

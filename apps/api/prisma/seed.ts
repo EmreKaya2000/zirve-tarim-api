@@ -334,32 +334,44 @@ async function seedCatalogTaxonomy(): Promise<void> {
   console.log(`    Kategoriler: ${categoryCount}`);
 
   for (const plant of SEED_PLANTS) {
-    await prisma.plant.upsert({
-      where: { slug: slugify(plant.name) },
-      update: {},
-      create: { ...plant, slug: slugify(plant.name) },
-    });
+    const slug = slugify(plant.name);
+
+    // findFirst + create: `slug` artik PARTIAL unique oldugu icin
+    // upsert kullanilamaz (Prisma tekil anahtar bekler). deletedAt
+    // filtresi bilincli: silinmis kaydin slug'i serbesttir.
+    if ((await prisma.plant.findFirst({ where: { slug, deletedAt: null } })) === null) {
+      await prisma.plant.create({ data: { ...plant, slug } });
+    }
   }
   console.log(`    Bitkiler: ${await prisma.plant.count()}`);
 
   for (const soilType of SEED_SOIL_TYPES) {
-    await prisma.soilType.upsert({
-      where: { slug: slugify(soilType.name) },
-      update: {},
-      create: { ...soilType, slug: slugify(soilType.name) },
-    });
+    const slug = slugify(soilType.name);
+
+    // findFirst + create: `slug` artik PARTIAL unique oldugu icin
+    // upsert kullanilamaz (Prisma tekil anahtar bekler). deletedAt
+    // filtresi bilincli: silinmis kaydin slug'i serbesttir.
+    if ((await prisma.soilType.findFirst({ where: { slug, deletedAt: null } })) === null) {
+      await prisma.soilType.create({ data: { ...soilType, slug } });
+    }
   }
   console.log(`    Toprak türleri: ${await prisma.soilType.count()}`);
 
   for (const unit of SEED_UNIT_TYPES) {
     const { conversionFactor, ...rest } = unit;
 
-    await prisma.unitType.upsert({
-      where: { slug: slugify(unit.name) },
-      update: {},
-      create: {
+    const slug = slugify(unit.name);
+
+    // findFirst + create: `slug` artik PARTIAL unique oldugu icin upsert
+    // kullanilamaz. deletedAt filtresi bilincli: silinmis kaydin slug'i serbest.
+    if ((await prisma.unitType.findFirst({ where: { slug, deletedAt: null } })) !== null) {
+      continue;
+    }
+
+    await prisma.unitType.create({
+      data: {
         ...rest,
-        slug: slugify(unit.name),
+        slug,
         // Kural 2: katsayı float'a uğratılmadan doğrudan Decimal'e verilir.
         conversionFactor:
           conversionFactor === undefined ? null : new Prisma.Decimal(conversionFactor),
@@ -369,29 +381,38 @@ async function seedCatalogTaxonomy(): Promise<void> {
   console.log(`    Birimler: ${await prisma.unitType.count()}`);
 
   for (const period of SEED_USAGE_PERIODS) {
-    await prisma.usagePeriod.upsert({
-      where: { slug: slugify(period.name) },
-      update: {},
-      create: { ...period, slug: slugify(period.name) },
-    });
+    const slug = slugify(period.name);
+
+    // findFirst + create: `slug` artik PARTIAL unique oldugu icin
+    // upsert kullanilamaz (Prisma tekil anahtar bekler). deletedAt
+    // filtresi bilincli: silinmis kaydin slug'i serbesttir.
+    if ((await prisma.usagePeriod.findFirst({ where: { slug, deletedAt: null } })) === null) {
+      await prisma.usagePeriod.create({ data: { ...period, slug } });
+    }
   }
   console.log(`    Kullanım dönemleri: ${await prisma.usagePeriod.count()}`);
 
   for (const benefit of SEED_BENEFITS) {
-    await prisma.benefit.upsert({
-      where: { slug: slugify(benefit.name) },
-      update: {},
-      create: { ...benefit, slug: slugify(benefit.name) },
-    });
+    const slug = slugify(benefit.name);
+
+    // findFirst + create: `slug` artik PARTIAL unique oldugu icin
+    // upsert kullanilamaz (Prisma tekil anahtar bekler). deletedAt
+    // filtresi bilincli: silinmis kaydin slug'i serbesttir.
+    if ((await prisma.benefit.findFirst({ where: { slug, deletedAt: null } })) === null) {
+      await prisma.benefit.create({ data: { ...benefit, slug } });
+    }
   }
   console.log(`    Yararlar: ${await prisma.benefit.count()}`);
 
   for (const sideEffect of SEED_SIDE_EFFECTS) {
-    await prisma.sideEffect.upsert({
-      where: { slug: slugify(sideEffect.name) },
-      update: {},
-      create: { ...sideEffect, slug: slugify(sideEffect.name) },
-    });
+    const slug = slugify(sideEffect.name);
+
+    // findFirst + create: `slug` artik PARTIAL unique oldugu icin
+    // upsert kullanilamaz (Prisma tekil anahtar bekler). deletedAt
+    // filtresi bilincli: silinmis kaydin slug'i serbesttir.
+    if ((await prisma.sideEffect.findFirst({ where: { slug, deletedAt: null } })) === null) {
+      await prisma.sideEffect.create({ data: { ...sideEffect, slug } });
+    }
   }
   console.log(`    Yan etkiler: ${await prisma.sideEffect.count()}`);
 }
@@ -443,7 +464,9 @@ async function uniqueCategorySlug(name: string): Promise<string> {
   let candidate = base;
   let suffix = 2;
 
-  while ((await prisma.category.findUnique({ where: { slug: candidate } })) !== null) {
+  while (
+    (await prisma.category.findFirst({ where: { slug: candidate, deletedAt: null } })) !== null
+  ) {
     candidate = `${base}-${suffix}`;
     suffix += 1;
   }
@@ -518,7 +541,9 @@ async function seedProducts(): Promise<void> {
       continue;
     }
 
-    const existing = await prisma.productVariant.findUnique({ where: { sku: firstSku } });
+    const existing = await prisma.productVariant.findFirst({
+      where: { sku: firstSku, deletedAt: null },
+    });
 
     if (existing !== null) {
       skipped += 1;
@@ -830,7 +855,9 @@ async function uniqueProductSlug(name: string): Promise<string> {
   let candidate = base;
   let suffix = 2;
 
-  while ((await prisma.product.findUnique({ where: { slug: candidate } })) !== null) {
+  while (
+    (await prisma.product.findFirst({ where: { slug: candidate, deletedAt: null } })) !== null
+  ) {
     candidate = `${base}-${suffix}`;
     suffix += 1;
   }
@@ -847,11 +874,14 @@ async function uniqueProductSlug(name: string): Promise<string> {
  */
 async function seedDemoBrands(): Promise<void> {
   for (const brand of SEED_BRANDS) {
-    await prisma.brand.upsert({
-      where: { slug: slugify(brand.name) },
-      update: {},
-      create: { ...brand, slug: slugify(brand.name) },
-    });
+    const slug = slugify(brand.name);
+
+    // findFirst + create: `slug` artik PARTIAL unique oldugu icin
+    // upsert kullanilamaz (Prisma tekil anahtar bekler). deletedAt
+    // filtresi bilincli: silinmis kaydin slug'i serbesttir.
+    if ((await prisma.brand.findFirst({ where: { slug, deletedAt: null } })) === null) {
+      await prisma.brand.create({ data: { ...brand, slug } });
+    }
   }
 
   console.log(`    Markalar: ${await prisma.brand.count()}`);
