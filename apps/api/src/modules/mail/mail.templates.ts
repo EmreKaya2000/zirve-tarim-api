@@ -175,3 +175,168 @@ function escapeHtml(value: string): string {
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
 }
+
+// ---------------------------------------------------------------------------
+// TALEP E-POSTALARI
+// ---------------------------------------------------------------------------
+
+/** Talep kaleminin e-postada gösterilecek özeti. */
+export interface InquiryMailItem {
+  productName: string;
+  variantName: string | null;
+  quantity: string;
+  unitName: string | null;
+}
+
+/** Kalem listesini metin gövdesi için satırlara çevirir. */
+function itemsAsText(items: InquiryMailItem[]): string[] {
+  return items.map((item) => {
+    const variant = item.variantName === null ? '' : ` (${item.variantName})`;
+    const unit = item.unitName === null ? '' : ` ${item.unitName}`;
+
+    return `  - ${item.productName}${variant} — ${item.quantity}${unit}`;
+  });
+}
+
+/** Kalem listesini HTML gövdesi için tek bir paragrafa çevirir. */
+function itemsAsHtml(items: InquiryMailItem[]): string {
+  const rows = items
+    .map((item) => {
+      const variant = item.variantName === null ? '' : ` (${item.variantName})`;
+      const unit = item.unitName === null ? '' : ` ${item.unitName}`;
+
+      return (
+        `<li style="margin:0 0 6px;">${item.productName}${variant} — ` +
+        `<strong>${item.quantity}${unit}</strong></li>`
+      );
+    })
+    .join('');
+
+  return `<ul style="margin:0 0 16px;padding-left:20px;font-size:15px;line-height:1.6;color:#374151;">${rows}</ul>`;
+}
+
+/**
+ * Talep alındı — MÜŞTERİYE.
+ *
+ * FİYAT YAZILMAZ. Talep bir sipariş değildir (SPEC §6); tutar mağaza teklif
+ * verene kadar belli değildir ve e-postada rakam göstermek müşteride
+ * "onaylanmış fiyat" beklentisi yaratır.
+ */
+export function buildInquiryReceivedMail(params: {
+  to: string;
+  contactName: string;
+  inquiryNumber: string;
+  items: InquiryMailItem[];
+}): MailMessage {
+  const { to, contactName, inquiryNumber, items } = params;
+
+  const heading = 'Talebiniz alındı';
+  const intro = `Merhaba ${contactName}, talebiniz bize ulaştı. En kısa sürede sizinle iletişime geçeceğiz.`;
+  const numberLine = `Talep numaranız: ${inquiryNumber}`;
+
+  return {
+    to,
+    subject: `Zirve Tarım — Talebiniz alındı (${inquiryNumber})`,
+    text: [
+      intro,
+      '',
+      numberLine,
+      '',
+      'Talep ettiğiniz ürünler:',
+      ...itemsAsText(items),
+      '',
+      'Ödeme ve teslimat mağazamızda gerçekleşir; bu talep bir sipariş değildir.',
+    ].join('\n'),
+    html: wrapHtml(heading, [
+      intro,
+      `<strong>${numberLine}</strong>`,
+      'Talep ettiğiniz ürünler:',
+    ]).replace(
+      '<hr',
+      `${itemsAsHtml(items)}<p style="margin:0 0 16px;font-size:15px;line-height:1.6;color:#374151;">` +
+        'Ödeme ve teslimat mağazamızda gerçekleşir; bu talep bir sipariş değildir.</p><hr',
+    ),
+  };
+}
+
+/**
+ * Yeni talep — YÖNETİME.
+ *
+ * Müşteri e-postasının aksine burada iletişim bilgisi TAM yazılır: bu adres
+ * mağazanın kendi kutusudur ve personelin müşteriyi araması gerekir.
+ */
+export function buildInquiryNewAdminMail(params: {
+  to: string;
+  inquiryNumber: string;
+  contactName: string;
+  contactPhone: string;
+  itemCount: number;
+  panelUrl: string;
+}): MailMessage {
+  const { to, inquiryNumber, contactName, contactPhone, itemCount, panelUrl } = params;
+
+  const heading = 'Yeni talep geldi';
+
+  return {
+    to,
+    subject: `Yeni talep: ${inquiryNumber} — ${contactName}`,
+    text: [
+      `${inquiryNumber} numaralı yeni bir talep geldi.`,
+      '',
+      `Ad Soyad : ${contactName}`,
+      `Telefon  : ${contactPhone}`,
+      `Kalem    : ${itemCount}`,
+      '',
+      'Panelde açmak için:',
+      panelUrl,
+    ].join('\n'),
+    html: wrapHtml(
+      heading,
+      [
+        `<strong>${inquiryNumber}</strong> numaralı yeni bir talep geldi.`,
+        `Ad Soyad: <strong>${contactName}</strong><br />` +
+          `Telefon: <strong>${contactPhone}</strong><br />` +
+          `Kalem sayısı: <strong>${itemCount}</strong>`,
+      ],
+      { label: 'Talebi panelde aç', url: panelUrl },
+    ),
+  };
+}
+
+/**
+ * Talep durumu değişti — MÜŞTERİYE.
+ *
+ * YALNIZ READY ve CANCELLED için gönderilir (SPEC Bölüm 2.2c). Ara durumlar
+ * (REVIEWING, CONTACTED, QUOTED) mağazanın iç iş akışıdır; her geçişte
+ * e-posta atmak müşteriyi bilgilendirmez, spam eder.
+ */
+export function buildInquiryStatusChangedMail(params: {
+  to: string;
+  contactName: string;
+  inquiryNumber: string;
+  statusLabel: string;
+  isCancelled: boolean;
+}): MailMessage {
+  const { to, contactName, inquiryNumber, statusLabel, isCancelled } = params;
+
+  const message = isCancelled
+    ? `${inquiryNumber} numaralı talebiniz iptal edildi.`
+    : `${inquiryNumber} numaralı talebiniz hazır. Mağazamızdan teslim alabilirsiniz.`;
+
+  return {
+    to,
+    subject: `Zirve Tarım — Talebiniz ${statusLabel.toLocaleLowerCase('tr-TR')} (${inquiryNumber})`,
+    text: [
+      `Merhaba ${contactName},`,
+      '',
+      message,
+      '',
+      'Sorunuz için mağazamızı arayabilirsiniz.',
+    ].join('\n'),
+    html: wrapHtml(`Talebiniz ${statusLabel.toLocaleLowerCase('tr-TR')}`, [
+      `Merhaba ${contactName},`,
+      message,
+      'Sorunuz için mağazamızı arayabilirsiniz.',
+    ]),
+  };
+}

@@ -75,6 +75,10 @@ services:
       SMTP_PASSWORD: ${SMTP_PASSWORD:-}
       # Doğrulama/sıfırlama bağlantılarının kök adresi (Host başlığından değil).
       PUBLIC_WEB_URL: ${PUBLIC_WEB_URL:-http://localhost:3000}
+      # Talep bildirimleri (Bölüm 2.2). ADMIN_NOTIFICATION_EMAIL boş
+      # bırakılabilir; o zaman yönetim bildirimi gönderilmez.
+      ADMIN_NOTIFICATION_EMAIL: ${ADMIN_NOTIFICATION_EMAIL:-}
+      ADMIN_PANEL_URL: ${ADMIN_PANEL_URL:-http://localhost:3001}
       THROTTLE_TTL: ${THROTTLE_TTL:-60}
       THROTTLE_LIMIT: ${THROTTLE_LIMIT:-120}
       SEED_SUPER_ADMIN_EMAIL: ${SEED_SUPER_ADMIN_EMAIL:-admin@zirvetarim.local}

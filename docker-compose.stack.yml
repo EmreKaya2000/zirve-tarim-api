@@ -47,6 +47,10 @@ services:
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://localhost:3001}
       # E-posta bağlantıları vitrine işaret eder (doğrulama, şifre sıfırlama).
       PUBLIC_WEB_URL: ${PUBLIC_WEB_URL:-http://localhost:3000}
+      # Talep bildirimleri (Bölüm 2.2). ADMIN_NOTIFICATION_EMAIL boş
+      # bırakılabilir; o zaman yönetim bildirimi gönderilmez.
+      ADMIN_NOTIFICATION_EMAIL: ${ADMIN_NOTIFICATION_EMAIL:-}
+      ADMIN_PANEL_URL: ${ADMIN_PANEL_URL:-http://localhost:3001}
 
   # ---------------------------------------------------------------------------
   # VİTRİN

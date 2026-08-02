@@ -141,4 +141,14 @@ export class AppConfig {
   get publicWebUrl(): string {
     return this.get('PUBLIC_WEB_URL').replace(/\/+$/, '');
   }
+
+  /** Yönetim paneli kök adresi; sondaki eğik çizgi atılır. */
+  get adminPanelUrl(): string {
+    return this.get('ADMIN_PANEL_URL').replace(/\/+$/, '');
+  }
+
+  /** Yeni talep bildiriminin gideceği adres; tanımsızsa bildirim gönderilmez. */
+  get adminNotificationEmail(): string | undefined {
+    return this.get('ADMIN_NOTIFICATION_EMAIL');
+  }
 }

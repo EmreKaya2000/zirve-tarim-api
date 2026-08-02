@@ -118,6 +118,29 @@ export const envSchema = z
       .url('PUBLIC_WEB_URL geçerli bir adres olmalıdır.')
       .default('http://localhost:3000'),
 
+    /**
+     * Yeni talep bildiriminin gideceği yönetim adresi.
+     *
+     * BOŞSA BİLDİRİM GÖNDERİLMEZ ve bu bir hata değildir: kurulumun her
+     * ortamında bir yönetim kutusu olmayabilir (ör. geliştirici makinesi).
+     * Zorunlu yapmak, adresi olmayan ortamlarda uygulamayı başlatmazdı.
+     */
+    ADMIN_NOTIFICATION_EMAIL: z
+      .string()
+      .email('ADMIN_NOTIFICATION_EMAIL geçerli bir e-posta olmalıdır.')
+      .optional(),
+
+    /**
+     * Yönetim paneli adresi — bildirim e-postasındaki bağlantı buraya gider.
+     *
+     * PUBLIC_WEB_URL'den AYRI: depo bölünmesinden sonra panel ayrı bir
+     * uygulama ve ayrı bir alan adında yayınlanır.
+     */
+    ADMIN_PANEL_URL: z
+      .string()
+      .url('ADMIN_PANEL_URL geçerli bir adres olmalıdır.')
+      .default('http://localhost:3001'),
+
     // --- Rate limit ---
     THROTTLE_TTL: intFromString(60, 1, 86_400),
     THROTTLE_LIMIT: intFromString(120, 1, 100_000),

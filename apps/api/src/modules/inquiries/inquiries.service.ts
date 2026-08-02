@@ -15,6 +15,7 @@ import { AppException } from '../../common/exceptions/app.exception';
 import { QueryBuilderService } from '../../common/services/query-builder.service';
 import { normalizePhone } from '../../common/utils/phone';
 import { normalizeEmail } from '../auth/auth.service';
+import { InquiryNotificationsService } from './inquiry-notifications.service';
 import {
   NUMBER_SCOPES,
   NumberSequenceService,
@@ -71,6 +72,7 @@ export class InquiriesService {
     private readonly auditLogs: AuditLogsService,
     private readonly settings: SettingsService,
     private readonly queryBuilder: QueryBuilderService,
+    private readonly notifications: InquiryNotificationsService,
   ) {}
 
   // ==========================================================================
@@ -208,6 +210,16 @@ export class InquiriesService {
     });
 
     this.logger.log(`Talep alındı: ${inquiry.inquiryNumber} (${validated.length} kalem)`);
+
+    /*
+     * BİLDİRİM TRANSACTION'IN DIŞINDA ve AWAIT EDİLMEDEN.
+     *
+     * Dışında: transaction commit olmadan gönderilen bir "talebiniz alındı"
+     * e-postası, rollback hâlinde var olmayan bir talebi bildirirdi.
+     * Await edilmeden: SMTP arızası istemciye 500 döndürseydi kullanıcı formu
+     * yeniden gönderir ve AYNI talep ikinci kez oluşurdu.
+     */
+    this.notifications.dispatchCreated(inquiry.id);
 
     return inquiry;
   }
@@ -503,6 +515,10 @@ export class InquiriesService {
         userAgent: actor.userAgent,
       });
     });
+
+    // Yalnız READY ve CANCELLED müşteriye bildirilir; kararı servis verir.
+    // Transaction dışında ve await edilmeden — gerekçe create() içinde.
+    this.notifications.dispatchStatusChanged(id, to);
 
     return this.findOne(id);
   }
