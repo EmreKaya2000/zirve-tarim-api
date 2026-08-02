@@ -1,5 +1,6 @@
 import {
   Body,
+  BadRequestException,
   Controller,
   Delete,
   Get,
@@ -11,15 +12,20 @@ import {
   Post,
   Query,
   Req,
+  Res,
+  UploadedFile,
+  UseInterceptors,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
-import type { Request } from 'express';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { ApiBearerAuth, ApiConsumes, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
+import type { Request, Response } from 'express';
 import { ERROR_CODES, type PaginatedResult } from '@zirve/types';
 
 import { toActor } from '../../common/controllers/lookup-crud.controller';
 import { ApiErrorResponse } from '../../common/swagger/api-response.decorators';
 import { CurrentUser, type RequestUser } from '../auth/decorators/current-user.decorator';
 import { ProductsService } from './products.service';
+import { ProductImportService } from './product-import.service';
 import { CreateProductDto, ListProductsQueryDto, UpdateProductDto } from './dto/product.dto';
 
 /** Ürün yönetimi (admin). */
@@ -27,7 +33,32 @@ import { CreateProductDto, ListProductsQueryDto, UpdateProductDto } from './dto/
 @ApiBearerAuth('access-token')
 @Controller('admin/products')
 export class ProductsController {
-  constructor(private readonly service: ProductsService) {}
+  constructor(
+    private readonly service: ProductsService,
+    private readonly imports: ProductImportService,
+  ) {}
+
+  @Get('import-template')
+  async importTemplate(@Res() response: Response): Promise<void> {
+    response
+      .set({
+        'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'Content-Disposition': 'attachment; filename="urun-ice-aktarma-sablonu.xlsx"',
+      })
+      .send(await this.imports.template());
+  }
+
+  @Post('import')
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 10 * 1024 * 1024, files: 1 } }))
+  @ApiConsumes('multipart/form-data')
+  async import(
+    @UploadedFile() file: { buffer: Buffer } | undefined,
+    @CurrentUser() user: RequestUser,
+    @Req() request: Request,
+  ) {
+    if (file === undefined) throw new BadRequestException('Yüklenecek Excel dosyası bulunamadı.');
+    return this.imports.import(file.buffer, toActor(user, request));
+  }
 
   @Get()
   @ApiOperation({

@@ -152,6 +152,23 @@ export const ADMIN_PRODUCT_LIST_SELECT = {
       salePrice: true,
       stockQuantity: true,
       lowStockThreshold: true,
+      /*
+       * `trackStock` LİSTEDE DE ZORUNLU.
+       *
+       * Panel `isLowStock`/`isOutOfStock` yardımcılarını bu alana bakarak
+       * çalıştırır (admin `src/lib/stock-api.ts`). Alan gelmezse ifade
+       * `undefined && ...` ile falsy'ye düşer ve STOĞU SIFIR OLAN HER
+       * VARYASYON SESSİZCE "YETERLİ" GÖRÜNÜR — üstelik panel tipi alanı
+       * zorunlu ilan ettiği için derleyici de uyarmaz.
+       */
+      trackStock: true,
+      /*
+       * `minOrderQuantity` de listede olmalı: satış formu kalem eklerken
+       * başlangıç miktarını bu alandan okuyor. Alan gelmediği için miktar
+       * `undefined` ile başlıyordu. (Bu, bu özellikten ÖNCE de var olan bir
+       * hataydı; aynı seçici bloğu düzeltirken birlikte kapatıldı.)
+       */
+      minOrderQuantity: true,
       isDefault: true,
       isActive: true,
       unitType: { select: { id: true, name: true, code: true, allowsDecimal: true } },
