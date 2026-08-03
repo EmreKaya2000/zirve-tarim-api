@@ -8,7 +8,7 @@ function cat(id: string, parentId: string | null, name: string, sortOrder = 0) {
     name,
     slug: name.toLowerCase(),
     description: null,
-    icon: null,
+    iconUrl: null,
     imageUrl: null,
     sortOrder,
     isActive: true,

@@ -18,14 +18,12 @@ import { MeasurementType, SideEffectSeverity } from '@prisma/client';
 export interface SeedCategory {
   name: string;
   description?: string;
-  icon?: string;
   children?: SeedCategory[];
 }
 
 export const SEED_CATEGORIES: SeedCategory[] = [
   {
     name: 'Gübre',
-    icon: 'sprout',
     description: 'Bitki besleme ürünleri. Toprak ve yaprak uygulamaları.',
     children: [
       {
@@ -64,7 +62,6 @@ export const SEED_CATEGORIES: SeedCategory[] = [
   },
   {
     name: 'Zirai İlaç',
-    icon: 'shield',
     description: 'Bitki koruma ürünleri. Bakanlık ruhsatlı.',
     children: [
       { name: 'Herbisit', description: 'Yabancı ot mücadelesi.' },
@@ -75,7 +72,6 @@ export const SEED_CATEGORIES: SeedCategory[] = [
   },
   {
     name: 'Tohum',
-    icon: 'wheat',
     description: 'Sertifikalı tohumluk çeşitleri.',
     children: [
       { name: 'Tahıl Tohumu', description: 'Buğday, arpa, yulaf.' },
@@ -85,7 +81,6 @@ export const SEED_CATEGORIES: SeedCategory[] = [
   },
   {
     name: 'Sulama',
-    icon: 'droplets',
     description: 'Damlama ve yağmurlama sulama malzemeleri.',
     children: [
       { name: 'Damlama Borusu', description: 'Damlatıcılı ve düz PE borular.' },
@@ -95,7 +90,6 @@ export const SEED_CATEGORIES: SeedCategory[] = [
   },
   {
     name: 'Ekipman',
-    icon: 'wrench',
     description: 'Uygulama ve koruyucu ekipmanlar.',
     children: [
       { name: 'Pülverizatör', description: 'Sırt ve motorlu ilaçlama pompaları.' },
@@ -105,7 +99,6 @@ export const SEED_CATEGORIES: SeedCategory[] = [
   },
   {
     name: 'Toprak Düzenleyici',
-    icon: 'layers',
     description: 'Toprak yapısını ve pH dengesini iyileştiren ürünler.',
   },
 ];

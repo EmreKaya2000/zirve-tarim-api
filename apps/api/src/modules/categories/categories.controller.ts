@@ -11,8 +11,18 @@ import {
   Post,
   Query,
   Req,
+  UploadedFile,
+  UseInterceptors,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
+import { FileInterceptor } from '@nestjs/platform-express';
+import {
+  ApiBearerAuth,
+  ApiBody,
+  ApiConsumes,
+  ApiOperation,
+  ApiParam,
+  ApiTags,
+} from '@nestjs/swagger';
 import type { Category } from '@prisma/client';
 import type { Request } from 'express';
 import type { PaginatedResult } from '@zirve/types';
@@ -20,6 +30,14 @@ import type { PaginatedResult } from '@zirve/types';
 import { toActor } from '../../common/controllers/lookup-crud.controller';
 import { SetActiveDto } from '../../common/dto/lookup.dto';
 import { CurrentUser, type RequestUser } from '../auth/decorators/current-user.decorator';
+import {
+  CategoryIconService,
+  MAX_ICON_SIZE_BYTES,
+  MAX_ICON_ASPECT_RATIO,
+  MAX_ICON_DIMENSION,
+  MIN_ICON_DIMENSION,
+} from '../uploads/category-icon.service';
+import type { UploadedFileLike } from '../uploads/image-validation';
 import { CategoriesService } from './categories.service';
 import {
   CreateCategoryDto,
@@ -38,7 +56,10 @@ import {
 @ApiBearerAuth('access-token')
 @Controller('admin/categories')
 export class CategoriesController {
-  constructor(private readonly service: CategoriesService) {}
+  constructor(
+    private readonly service: CategoriesService,
+    private readonly icons: CategoryIconService,
+  ) {}
 
   @Get()
   @ApiOperation({
@@ -116,6 +137,55 @@ export class CategoriesController {
     @Req() request: Request,
   ): Promise<Category> {
     return this.service.setActive(id, dto.isActive, toActor(user, request));
+  }
+
+  @Post(':id/icon')
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: MAX_ICON_SIZE_BYTES, files: 1 } }))
+  @ApiConsumes('multipart/form-data')
+  @ApiParam({ name: 'id', format: 'uuid' })
+  @ApiBody({
+    schema: { type: 'object', properties: { file: { type: 'string', format: 'binary' } } },
+  })
+  @ApiOperation({
+    summary: 'Kategori ikonu yükle',
+    description: [
+      `JPG, PNG ve WebP kabul edilir; en fazla ${MAX_ICON_SIZE_BYTES / 1024 / 1024} MB.`,
+      '',
+      'SVG KABUL EDİLMEZ: XML olduğu için script taşıyabilir ve kendi alan',
+      'adımızdan servis edildiğinde saklanmış XSS riskine dönüşür.',
+      '',
+      `Boyut: en az ${MIN_ICON_DIMENSION}×${MIN_ICON_DIMENSION}, en fazla ` +
+        `${MAX_ICON_DIMENSION}×${MAX_ICON_DIMENSION} piksel. Kareye yakın olmalıdır ` +
+        `(en/boy oranı en çok ${MAX_ICON_ASPECT_RATIO}).`,
+      '',
+      'Görsel 128×128 WebP olarak yeniden üretilir; oran korunur, boşluk',
+      'şeffaf doldurulur ve EXIF/metadata ATILIR (konum sızıntısı önlemi).',
+      '',
+      'Kategoride ikon varsa yenisiyle DEĞİŞTİRİLİR, eski dosya silinir.',
+    ].join('\n'),
+  })
+  async uploadIcon(
+    @Param('id', ParseUUIDPipe) id: string,
+    @UploadedFile() file: UploadedFileLike | undefined,
+    @CurrentUser() user: RequestUser,
+    @Req() request: Request,
+  ): Promise<{ iconUrl: string }> {
+    return this.icons.upload(id, file, toActor(user, request));
+  }
+
+  @Delete(':id/icon')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiParam({ name: 'id', format: 'uuid' })
+  @ApiOperation({
+    summary: 'Kategori ikonunu kaldır',
+    description: 'İkon silinir; vitrin varsayılan ikona döner.',
+  })
+  async removeIcon(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: RequestUser,
+    @Req() request: Request,
+  ): Promise<void> {
+    return this.icons.remove(id, toActor(user, request));
   }
 
   @Delete(':id')

@@ -94,7 +94,7 @@ export class CategoriesService {
         name: true,
         slug: true,
         description: true,
-        icon: true,
+        iconUrl: true,
         imageUrl: true,
         sortOrder: true,
         isActive: true,
@@ -159,7 +159,8 @@ export class CategoriesService {
           slug,
           parentId: dto.parentId ?? null,
           description: dto.description ?? null,
-          icon: dto.icon ?? null,
+          // İkon burada ayarlanmaz: görsel yükleme ucu üzerinden gelir
+          // (POST /admin/categories/:id/icon). Kategori önce oluşur.
           imageUrl: dto.imageUrl ?? null,
           metaTitle: dto.metaTitle ?? null,
           metaDesc: dto.metaDesc ?? null,
@@ -209,7 +210,6 @@ export class CategoriesService {
           ...(slug !== undefined && { slug }),
           ...(isMoving && { parentId: dto.parentId ?? null }),
           ...(dto.description !== undefined && { description: dto.description }),
-          ...(dto.icon !== undefined && { icon: dto.icon }),
           ...(dto.imageUrl !== undefined && { imageUrl: dto.imageUrl }),
           ...(dto.metaTitle !== undefined && { metaTitle: dto.metaTitle }),
           ...(dto.metaDesc !== undefined && { metaDesc: dto.metaDesc }),
@@ -454,7 +454,7 @@ interface FlatCategory {
   name: string;
   slug: string;
   description: string | null;
-  icon: string | null;
+  iconUrl: string | null;
   imageUrl: string | null;
   sortOrder: number;
   isActive: boolean;
@@ -476,7 +476,7 @@ export function buildTree(categories: FlatCategory[]): CategoryTreeNode[] {
       name: category.name,
       slug: category.slug,
       description: category.description,
-      icon: category.icon,
+      iconUrl: category.iconUrl,
       imageUrl: category.imageUrl,
       sortOrder: category.sortOrder,
       isActive: category.isActive,

@@ -17,13 +17,6 @@ export class CreateCategoryDto extends BaseLookupCreateDto {
   @IsUUID('4', { message: 'parentId geçerli bir UUID olmalıdır.' })
   parentId?: string;
 
-  @ApiPropertyOptional({ example: 'sprout', description: 'Lucide ikon adı.' })
-  @IsOptional()
-  @IsString()
-  @MaxLength(60)
-  @TrimToUndefined()
-  icon?: string;
-
   @ApiPropertyOptional({ example: 'https://cdn.zirvetarim.com/kategoriler/gubre.webp' })
   @IsOptional()
   @IsUrl({ require_tld: false }, { message: 'imageUrl geçerli bir adres olmalıdır.' })
@@ -56,13 +49,6 @@ export class UpdateCategoryDto extends BaseLookupUpdateDto {
   @IsOptional()
   @IsUUID('4', { message: 'parentId geçerli bir UUID olmalıdır.' })
   parentId?: string | null;
-
-  @ApiPropertyOptional({ example: 'sprout' })
-  @IsOptional()
-  @IsString()
-  @MaxLength(60)
-  @TrimToUndefined()
-  icon?: string;
 
   @ApiPropertyOptional()
   @IsOptional()
@@ -109,7 +95,8 @@ export interface CategoryTreeNode {
   name: string;
   slug: string;
   description: string | null;
-  icon: string | null;
+  /** Yüklenen ikon görselinin adresi. Yükleme ucu üzerinden ayarlanır. */
+  iconUrl: string | null;
   imageUrl: string | null;
   sortOrder: number;
   isActive: boolean;

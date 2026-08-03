@@ -490,7 +490,6 @@ async function seedCategoryTree(
           slug,
           parentId,
           description: node.description ?? null,
-          icon: node.icon ?? null,
           sortOrder: index + 1,
           isActive: true,
         },

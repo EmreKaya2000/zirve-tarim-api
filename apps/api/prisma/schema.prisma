@@ -321,8 +321,18 @@ model Category {
   slug        String  @db.VarChar(180)
   description String? @db.Text
   imageUrl    String? @db.VarChar(500)
-  /// Lucide ikon adı. Örn. "sprout"
-  icon        String? @db.VarChar(60)
+  /// Kategori ikonu — YÜKLENEN GÖRSEL.
+  ///
+  /// Önceden `icon String? @db.VarChar(60)` idi ve lucide ikon adı (ör.
+  /// "sprout") tutuyordu. O alan panelde yazıldığı hâlde vitrinde HİÇ
+  /// okunmuyordu: vitrin her kategoride sabit bir ikon basıyordu. Artık
+  /// mağaza kendi görselini yüklüyor.
+  ///
+  /// `iconStorageKey` AYRI tutulur: anahtar sürücüye göreli kalıcı kimliktir,
+  /// URL sürücüye göre değişir (yerel yol vs. CDN). Silmek ve sürücü
+  /// değiştiğinde URL'i yeniden üretmek için anahtar gerekir.
+  iconUrl        String? @db.VarChar(700)
+  iconStorageKey String? @db.VarChar(500)
 
   sortOrder Int     @default(0)
   isActive  Boolean @default(true)
