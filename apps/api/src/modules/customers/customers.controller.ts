@@ -72,6 +72,19 @@ export class CustomersController {
     return this.service.checkDuplicatePhone(query.phone, query.excludeId);
   }
 
+  /** `:id` ROTASINDAN ÖNCE — yukarıdaki gerekçenin aynısı. */
+  @Get('retail')
+  @ApiOperation({
+    summary: 'Kartsız (perakende) satış kartı',
+    description:
+      'Kartsız peşin satışların bağlandığı sistem kartı. Silinemez, düzenlenemez, ' +
+      'vadeli satış kabul etmez ve alacak raporlarında görünmez. Seed çalıştırılmamış ' +
+      'kurulumda 404 döner.',
+  })
+  async findRetail() {
+    return this.service.findRetail();
+  }
+
   @Get(':id')
   @ApiParam({ name: 'id', format: 'uuid' })
   @ApiOperation({ summary: 'Müşteri detayı', description: 'Finans özetiyle birlikte döner.' })

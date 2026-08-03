@@ -1,6 +1,12 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { AuditAction, Prisma, SaleStatus, StockMovementType } from '@prisma/client';
-import { SALE_NUMBER_PREFIX, canCancelSale, canEditSale, type PaymentType } from '@zirve/types';
+import {
+  SALE_NUMBER_PREFIX,
+  canCancelSale,
+  canEditSale,
+  isRetailCustomer,
+  type PaymentType,
+} from '@zirve/types';
 import type { ApiErrorDetail } from '@zirve/types';
 
 import { PrismaService } from '../../infra/prisma/prisma.service';
@@ -62,6 +68,7 @@ export class SalesService {
     const customer = await this.requireActiveCustomer(dto.customerId);
 
     this.assertDueDate(dto.paymentType, dto.dueDate);
+    this.assertRetailRules(customer.code, dto.paymentType, dto.initialPayment !== undefined);
 
     const resolved = await this.resolveItems(dto.items);
     const now = new Date();
@@ -92,7 +99,32 @@ export class SalesService {
       // Toplamlar kalemler yazıldıktan SONRA hesaplanır: hesaplama
       // veritabanındaki kalemleri okur, bellekteki listeyi değil. Böylece
       // saklanan toplam ile kayıtlı kalemler arasında ayrışma olamaz.
-      await this.calculation.recalculate(tx, created.id);
+      const totals = await this.calculation.recalculate(tx, created.id);
+
+      /*
+       * PERAKENDE SATIŞ TAM TAHSİL EDİLMİŞ OLMALI — ve kontrol TRANSACTION
+       * İÇİNDE yapılmalı.
+       *
+       * Eksik tahsilat perakende kartında borç bırakır; o borcun sahibi
+       * yoktur, kimse aranamaz ve alacak raporu kirlenir. Burada fırlatmak
+       * tüm transaction'ı geri alır: hatalı satış hiç oluşmaz. Kontrol
+       * `create()`in sonunda yapılsaydı satış kaydı ortada kalırdı.
+       */
+      if (isRetailCustomer(customer.code) && dto.initialPayment !== undefined) {
+        const tahsilat = new Prisma.Decimal(dto.initialPayment.amount);
+
+        if (!tahsilat.equals(totals.grandTotal)) {
+          throw AppException.badRequest(
+            'Perakende satışta tahsilat tutarı toplamı karşılamalıdır.',
+            [
+              {
+                field: 'initialPayment.amount',
+                message: `Satış toplamı ${totals.grandTotal.toFixed(2)}, girilen tahsilat ${tahsilat.toFixed(2)}.`,
+              },
+            ],
+          );
+        }
+      }
 
       await this.auditLogs.record(tx, {
         userId: actor.id,
@@ -153,7 +185,25 @@ export class SalesService {
     }
 
     if (dto.customerId !== undefined) {
-      await this.requireActiveCustomer(dto.customerId);
+      const yeniMusteri = await this.requireActiveCustomer(dto.customerId);
+
+      /*
+       * MEVCUT SATIŞ PERAKENDE KARTINA ÇEVRİLEMEZ.
+       *
+       * `create()` perakende satışın peşin ve tam tahsil edilmiş olmasını
+       * zorunlu tutuyor. O kontrol atlanabilseydi bu yol kullanılırdı:
+       * normal müşteriyle ödemesiz bir taslak açıp müşterisini perakendeye
+       * çevirmek, ardından elle onaylamak — sonuçta perakende kartında
+       * sahibi olmayan bir borç kalırdı.
+       */
+      if (isRetailCustomer(yeniMusteri.code)) {
+        throw AppException.badRequest('Mevcut satış perakende kartına aktarılamaz.', [
+          {
+            field: 'customerId',
+            message: 'Kartsız satış, tahsilatıyla birlikte baştan oluşturulmalıdır.',
+          },
+        ]);
+      }
     }
 
     const paymentType = dto.paymentType ?? (existing.paymentType as PaymentType);
@@ -724,6 +774,39 @@ export class SalesService {
     }
 
     return customer;
+  }
+
+  /**
+   * KARTSIZ (PERAKENDE) SATIŞ DEĞİŞMEZLERİ.
+   *
+   * Perakende kartı gerçek bir kişi değil; borcun sahibi yoktur. Bu yüzden
+   * kartsız satış DAİMA peşin ve DAİMA satış anında tam tahsil edilmiş
+   * olmalıdır. Aksi hâlde kartta hayalet bir borç birikir, alacak raporunda
+   * "Perakende Müşteri" satırı belirir ve gerçek borçluları bastırır.
+   *
+   * Tutar eşitliği burada DEĞİL, transaction içinde denetlenir: toplam ancak
+   * kalemler yazıldıktan sonra bilinir.
+   */
+  private assertRetailRules(
+    customerCode: string,
+    paymentType: PaymentType,
+    hasInitialPayment: boolean,
+  ): void {
+    if (!isRetailCustomer(customerCode)) {
+      return;
+    }
+
+    if (paymentType === 'CREDIT') {
+      throw AppException.badRequest('Perakende (kartsız) satış vadeli olamaz.', [
+        { field: 'paymentType', message: 'Borcun sahibi yoktur; kartsız satış peşin olmalıdır.' },
+      ]);
+    }
+
+    if (!hasInitialPayment) {
+      throw AppException.badRequest('Perakende satışta tahsilat satışla birlikte alınmalıdır.', [
+        { field: 'initialPayment', message: 'Kartsız satış ödemesiz kaydedilemez.' },
+      ]);
+    }
   }
 
   /** Vadeli satışta vade tarihi zorunludur. */

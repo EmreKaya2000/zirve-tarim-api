@@ -2,8 +2,10 @@ import { Injectable, Logger } from '@nestjs/common';
 import { AuditAction, Prisma, SaleStatus } from '@prisma/client';
 import {
   CUSTOMER_CODE_PREFIX,
+  RETAIL_CUSTOMER_CODE,
   WARNING_CODES,
   hasFirstAndLastName,
+  isRetailCustomer,
   type ApiErrorDetail,
   type ApiWarning,
   type CustomerType,
@@ -157,6 +159,19 @@ export class CustomersService {
 
   async update(id: string, dto: UpdateCustomerDto, actor: ActorContext): Promise<unknown> {
     const existing = await this.getExisting(id);
+
+    this.assertNotRetail(
+      existing.code,
+      'Perakende müşteri kartı düzenlenemez.',
+      /*
+       * TÜM güncelleme reddedilir, alan alan değil. Bu kartta düzenlenebilir
+       * her alan ya anlamsız (şehir, vergi no) ya tehlikeli. Özellikle
+       * `isActive: false`: kart pasife alınınca `requireActiveCustomer`
+       * KARTSIZ SATIŞLARIN TAMAMINI sessizce reddetmeye başlar ve sebebi
+       * satış ekranında hiç görünmez.
+       */
+      'Bu kart sistem kaydıdır; kartsız satışların tamamı ona bağlıdır.',
+    );
 
     // Doğrulama, MEVCUT ve GÜNCELLENMİŞ değerlerin birleşimi üzerinde
     // yapılır: yalnız `type` gönderildiğinde de kural bütün olarak
@@ -422,6 +437,13 @@ export class CustomersService {
    */
   async remove(id: string, actor: ActorContext): Promise<void> {
     const existing = await this.getExisting(id);
+
+    this.assertNotRetail(
+      existing.code,
+      'Perakende müşteri kartı silinemez.',
+      'Bu kart sistem kaydıdır; kartsız satışların tamamı ona bağlıdır.',
+    );
+
     const summary = await this.financeSummary(id);
 
     if (new Prisma.Decimal(summary.currentDebt).greaterThan(0)) {
@@ -540,6 +562,35 @@ export class CustomersService {
   }
 
   /** Kaydı getirir; yoksa 404. */
+  /** Perakende kartı korumasi: sistem kaydı üzerinde değişiklik yapılamaz. */
+  private assertNotRetail(code: string, message: string, detail: string): void {
+    if (isRetailCustomer(code)) {
+      throw AppException.badRequest(message, [{ field: 'id', message: detail }]);
+    }
+  }
+
+  /**
+   * Kartsız satışların bağlandığı sistem kartı.
+   *
+   * Panel bu ucu "Perakende Satış" düğmesi için çağırır. Seed koşulmamış bir
+   * kurulumda kart YOKTUR ve 404 döner; arayüz o durumda düğmeyi gizler,
+   * beyaz ekran vermez.
+   */
+  async findRetail(): Promise<unknown> {
+    const customer = await this.prisma.customer.findFirst({
+      where: { code: RETAIL_CUSTOMER_CODE, deletedAt: null },
+      select: CUSTOMER_LIST_SELECT,
+    });
+
+    if (customer === null) {
+      throw AppException.notFound(
+        'Perakende müşteri kartı bulunamadı. Seed çalıştırılmamış olabilir.',
+      );
+    }
+
+    return { ...customer, financeSummary: await this.financeSummary(customer.id) };
+  }
+
   async getExisting(id: string): Promise<{
     id: string;
     code: string;

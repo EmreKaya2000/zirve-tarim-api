@@ -42,6 +42,8 @@ import {
   UserRole,
 } from '@prisma/client';
 
+import { RETAIL_CUSTOMER_CODE, RETAIL_CUSTOMER_NAME } from '@zirve/types';
+
 import {
   LEGAL_WARNING_TEXT,
   SEED_BENEFITS,
@@ -284,6 +286,49 @@ async function seedSettings(): Promise<void> {
  * Kullanıcı zaten varsa ŞİFRESİ EZİLMEZ: yönetici değiştirmiş olabilir ve
  * seed'in tekrar çalışması güvenlik ayarını geri almamalıdır.
  */
+/**
+ * KARTSIZ (PERAKENDE) SATIŞ KARTI — sistem verisi.
+ *
+ * Tezgâhtaki küçük peşin satışta müşteriden isim istemek işi yavaşlatır;
+ * zorunlu tutulunca personel ya sahte kart açar ya satışı hiç girmez. Tüm
+ * kartsız satışlar bu TEK karta bağlanır.
+ *
+ * DEMO BLOĞUNDA DEĞİL, SİSTEM BLOĞUNDA: demo verisi kapalı bir üretim
+ * kurulumunda da bu kart bulunmalı, yoksa kartsız satış hiç çalışmaz.
+ *
+ * NUMARA ÜRETECİ KULLANILMAZ: `numbers.next()` çağırmak sayaçtan bir değer
+ * tüketir ve ilk gerçek müşteriyi MUS-2026-000002 yapardı. Kod sabittir.
+ */
+async function seedRetailCustomer(): Promise<void> {
+  const existing = await prisma.customer.findFirst({ where: { code: RETAIL_CUSTOMER_CODE } });
+
+  if (existing !== null) {
+    console.log(`  Perakende kartı zaten mevcut: ${RETAIL_CUSTOMER_CODE}`);
+
+    return;
+  }
+
+  await prisma.customer.create({
+    data: {
+      code: RETAIL_CUSTOMER_CODE,
+      type: 'INDIVIDUAL',
+      fullName: RETAIL_CUSTOMER_NAME,
+      /*
+       * Telefon '0000000000' BİLİNÇLİ: gerçek bir Türk cep numarası daima 5
+       * ile başlar ve CreateCustomerDto bunu zorlar, dolayısıyla API üzerinden
+       * açılan hiçbir müşteri bu numarayla çakışamaz.
+       */
+      phone: '0000000000',
+      creditLimit: new Prisma.Decimal(0),
+      openingBalance: new Prisma.Decimal(0),
+      isActive: true,
+      note: 'Sistem kaydı: kartsız peşin satışlar bu karta bağlanır. Silinemez, düzenlenemez, vadeli satış kabul etmez.',
+    },
+  });
+
+  console.log(`  Perakende kartı oluşturuldu: ${RETAIL_CUSTOMER_CODE}`);
+}
+
 async function seedSuperAdmin(): Promise<void> {
   const email = (process.env['SEED_SUPER_ADMIN_EMAIL'] ?? 'admin@zirvetarim.local')
     .trim()
@@ -914,6 +959,7 @@ async function main(): Promise<void> {
   // --- SİSTEM VERİSİ: daima ---
   await seedSettings();
   await seedSuperAdmin();
+  await seedRetailCustomer();
   await seedCatalogTaxonomy();
 
   // --- DEMO VERİSİ: koşullu ---

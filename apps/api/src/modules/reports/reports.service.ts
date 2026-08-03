@@ -5,6 +5,7 @@ import {
   CHART_MONTHS,
   OPEN_DEBT_SALE_STATUSES,
   REPORTABLE_SALE_STATUSES,
+  RETAIL_CUSTOMER_CODE,
   TOP_LIST_LIMIT,
   type AgingBucket,
 } from '@zirve/types';
@@ -304,6 +305,12 @@ export class ReportsService {
        WHERE s."status" = ANY(${OPEN_DEBT_SALE_STATUSES}::"SaleStatus"[])
          AND s."remainingTotal" > 0
          AND c."deletedAt" IS NULL
+         -- PERAKENDE KARTI BU EKRANDA GÖRÜNMEZ: bu rapor "bugün kimi
+         -- aramalıyım" sorusunu yanıtlar, "Perakende Müşteri" aranamaz.
+         -- Kartta bakiye görünmesi bir alacak değil bir işlem anomalisidir
+         -- (ör. ödemesi silinmiş ama iptal edilmemiş satış) ve gerçek
+         -- borçluları listenin altına iter.
+         AND c."code" <> ${RETAIL_CUSTOMER_CODE}
        GROUP BY c."id", c."code", c."fullName", c."phone", c."creditLimit"
        ORDER BY SUM(s."remainingTotal") DESC
     `;
@@ -430,6 +437,12 @@ export class ReportsService {
        WHERE s."status" = ANY(${OPEN_DEBT_SALE_STATUSES}::"SaleStatus"[])
          AND s."remainingTotal" > 0
          AND c."deletedAt" IS NULL
+         -- PERAKENDE KARTI BU EKRANDA GÖRÜNMEZ: bu rapor "bugün kimi
+         -- aramalıyım" sorusunu yanıtlar, "Perakende Müşteri" aranamaz.
+         -- Kartta bakiye görünmesi bir alacak değil bir işlem anomalisidir
+         -- (ör. ödemesi silinmiş ama iptal edilmemiş satış) ve gerçek
+         -- borçluları listenin altına iter.
+         AND c."code" <> ${RETAIL_CUSTOMER_CODE}
        GROUP BY c."id", c."code", c."fullName"
        ORDER BY SUM(s."remainingTotal") DESC
        LIMIT ${limit}

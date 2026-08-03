@@ -23,6 +23,43 @@ export const CUSTOMER_TYPE_LABELS: Readonly<Record<CustomerType, string>> = {
 export const CUSTOMER_CODE_PREFIX = 'MUS';
 
 /**
+ * KARTSIZ (PERAKENDE) PEŞİN SATIŞ KARTI.
+ *
+ * Tezgâhtaki küçük peşin satışta müşteriden isim/telefon istemek işi
+ * yavaşlatır. Zorunlu tutulduğunda personel ya sahte kart açar ya satışı hiç
+ * girmez; ikincisinde stok gerçekle bir hafta içinde ayrışır. Bu yüzden tüm
+ * kartsız satışlar TEK bir sistem kartına bağlanır.
+ *
+ * NEDEN BOOLEAN ALAN DEĞİL, SABİT KOD:
+ *   1. Sıfır şema değişikliği. Bool alan hem migration hem de "tek perakende
+ *      kartı" garantisi için partial unique index isterdi; Prisma partial
+ *      index tanımlayamaz (bkz. 20260731163313_soft_delete_partial_unique).
+ *      `customers.code` ZATEN tam unique — teklik bedava ve veritabanı
+ *      garantisi.
+ *   2. `code` zaten müşteri listesi ve satış yanıtı seçicilerinde var; hiçbir
+ *      API sözleşmesi değişmiyor, işaret bugün taşınıyor.
+ *   3. `code` UpdateCustomerDto'da YOK — işaret API'den değiştirilemez.
+ *      Bool alan iki DTO'dan da elle dışarıda tutulmak zorunda kalır ve
+ *      ileride bir PartialType refaktörü sessizce açardı.
+ *
+ * KOD BİÇİMİ: `customers.code` bir CHECK kısıtına tabidir. Sayısal biçimin
+ * (`MUS-<yıl>-<6 hane>`) yanına AYRILMIŞ BİR SİSTEM ALANI eklendi:
+ * `<ÖNEK>-SYS-<AD>`. `SYS` segmenti numara üreteci tarafından asla
+ * üretilemez (o daima dört haneli yıl yazar), dolayısıyla çakışma imkânsız
+ * ve kod listede okunduğunda ne olduğu anlaşılır. İleride başka bir sistem
+ * kaydı gerekirse aynı kalıp kullanılır.
+ */
+export const RETAIL_CUSTOMER_CODE = 'MUS-SYS-PERAKENDE';
+
+/** Perakende kartının görünen adı. */
+export const RETAIL_CUSTOMER_NAME = 'Perakende Müşteri';
+
+/** Bu kod perakende (kartsız satış) kartına mı ait? */
+export function isRetailCustomer(code: string): boolean {
+  return code === RETAIL_CUSTOMER_CODE;
+}
+
+/**
  * Müşteri tipine göre ZORUNLU alanlar (Sprint 7 şartı 2).
  *
  * Backend ile arayüz aynı tabloyu okur: form hangi alanı yıldızlı
